@@ -91,6 +91,26 @@ const ProjectorView: React.FC = () => {
     if (payload.type === 'set_phase' && typeof payload.value === 'string') {
       setPhaseOverride(payload.value as Phase);
     }
+    if (payload.type === 'broadcast_bid' && typeof payload.value === 'number') {
+      setBidPulseKey(k => k + 1);
+      if (soundEnabled) audio.playBidSound();
+    }
+    if (payload.type === 'confirm_sold' && typeof payload.value === 'string') {
+      const candidateId = payload.value;
+      const candidate = allCandidates.find(c => c.id === candidateId);
+      if (candidate && candidate.status === 'drafted') {
+        setSoldInfo({ candidate, house: allHouses.find(h => h.id === candidate.drafted_to_house_id) || null, bid: candidate.winning_bid || 0 });
+        fireConfetti();
+        if (soundEnabled) audio.playSoldSound();
+      }
+    }
+    if (payload.type === 'pass_candidate' && typeof payload.value === 'string') {
+      setPinnedId(payload.value);
+      setShowRealName(false);
+    }
+    if (payload.type === 'house_selected' && typeof payload.value === 'string') {
+      // House selection sync - projector can update highlighted house state
+    }
     // Media sync events
     if (payload.type === 'media_sync' && payload.media) {
       setSyncedMedia(payload.media);

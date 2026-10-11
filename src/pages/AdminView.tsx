@@ -24,6 +24,7 @@ interface BaseMediaInfo {
   mediaUrl: string;
   mediaIndex?: number;
   action?: 'play' | 'pause' | 'seek' | 'sync';
+  duration?: number;
 }
 
 interface SyncedMediaProps {
@@ -31,6 +32,8 @@ interface SyncedMediaProps {
   onSync?: (media: BaseMediaInfo) => void;
   candidateId: string;
   mediaType: 'video' | 'image' | 'pdf';
+  mediaIndex?: number;
+  duration?: number;
 }
 
 const SyncedVideoPlayer: React.FC<SyncedMediaProps & { 
@@ -38,14 +41,13 @@ const SyncedVideoPlayer: React.FC<SyncedMediaProps & {
   onPause?: (info: BaseMediaInfo) => void;
   onSeek?: (info: BaseMediaInfo, currentTime: number) => void;
 }> = ({ 
-  src, candidateId, mediaType, onPlay, onPause, onSeek 
+  src, candidateId, mediaType, onPlay, onPause, onSeek, mediaIndex, duration: mediaDuration 
 }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
-  const [isFullscreen, setIsFullscreen] = useState(false);
-  const mediaRef = useRef<BaseMediaInfo>({ candidateId, mediaType, mediaUrl: src });
+  const mediaRef = useRef<BaseMediaInfo>({ candidateId, mediaType, mediaUrl: src, mediaIndex, duration: mediaDuration || 0 });
 
   const handlePlay = () => {
     setIsPlaying(true);
@@ -67,7 +69,7 @@ const SyncedVideoPlayer: React.FC<SyncedMediaProps & {
 
   const handleLoadedMetadata = () => {
     if (videoRef.current) {
-      setDuration(videoRef.current.duration);
+      setDuration(videoRef.current.duration || duration);
     }
   };
 
@@ -150,10 +152,10 @@ const SyncedVideoPlayer: React.FC<SyncedMediaProps & {
 };
 
 const SyncedImageViewer: React.FC<SyncedMediaProps> = ({ 
-  src, onSync, candidateId, mediaType 
+  src, onSync, candidateId, mediaType, mediaIndex 
 }) => {
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const mediaRef = useRef<BaseMediaInfo>({ candidateId, mediaType, mediaUrl: src });
+  const mediaRef = useRef<BaseMediaInfo>({ candidateId, mediaType, mediaUrl: src, mediaIndex });
 
   const handleFullscreen = () => {
     setIsFullscreen(!isFullscreen);
@@ -563,6 +565,7 @@ const AdminView: React.FC = () => {
       confetti({ particleCount: 80, spread: 120, scalar: 1.2 });
     }
 
+    broadcastEvent({ type: 'confirm_sold', value: currentCandidate.id });
     showMsg('ok', `${currentCandidate.anonymous_id} → ${winnerHouse.name} for ${highest}`);
     nextCand();
     setLoading(false);
@@ -581,6 +584,7 @@ const AdminView: React.FC = () => {
     showMsg('ok', `${currentCandidate.anonymous_id} passed — added to snake pool`);
     nextCand();
     setLoading(false);
+    broadcastEvent({ type: 'pass_candidate' });
   };
 
   // Broadcast confetti to projector + fire locally
@@ -602,6 +606,16 @@ const AdminView: React.FC = () => {
     setShowRealName(next);
     broadcastEvent({ type: 'reveal_identity', value: next });
   };
+
+  // Broadcast house selection to projector
+  const broadcastHouseSelect = useCallback((houseId: string) => {
+    broadcastEvent({ type: 'house_selected', value: houseId });
+  }, []);
+
+  // Broadcast bid action to projector
+  const broadcastBid = useCallback((amount: number) => {
+    broadcastEvent({ type: 'broadcast_bid', value: amount });
+  }, []);
 
   // Timer controls that broadcast state to projector
   const startTimer = () => {
@@ -776,7 +790,14 @@ const AdminView: React.FC = () => {
                   onSync={broadcastMediaSync}
                 />
               )}
-              {currentCandidate.media_type === 'video' && (
+              {currentCandidate.media_type === 'video' && currentCandidate.media_urls && currentCandidate.media_urls.length > 1 && (
+                <ImageCarousel 
+                  images={currentCandidate.media_urls}
+                  candidateId={currentCandidate.id}
+                  onSync={broadcastMediaSync}
+                />
+              )}
+              {currentCandidate.media_type === 'video' && (!currentCandidate.media_urls || currentCandidate.media_urls.length <= 1) && (
                 <SyncedVideoPlayer 
                   src={currentCandidate.media_url}
                   candidateId={currentCandidate.id}
@@ -913,7 +934,10 @@ const AdminView: React.FC = () => {
               {houses.map((house) => (
                 <button
                   key={house.id}
-                  onClick={() => setSelectedHouseId(house.id)}
+                  onClick={() => {
+                    setSelectedHouseId(house.id);
+                    broadcastHouseSelect(house.id);
+                  }}
                   className={`py-3 font-display text-sm font-bold transition-all ${
                     selectedHouseId === house.id
                       ? 'border-2 border-white'
@@ -930,7 +954,10 @@ const AdminView: React.FC = () => {
               {[5, 10, 25].map(a => (
                 <button
                   key={a}
-                  onClick={() => bid(a)}
+                  onClick={() => {
+                    bid(a);
+                    broadcastBid(a);
+                  }}
                   disabled={!selectedHouseId || loading}
                   className="py-3 bg-white/5 border border-white/10 font-bold hover:bg-white/10 disabled:opacity-30 transition-colors"
                 >
@@ -944,7 +971,7 @@ const AdminView: React.FC = () => {
                   max="20"
                   value={customBid}
                   onChange={e => setCustomBid(e.target.value)}
-                  onKeyDown={e => { if (e.key === 'Enter') bid(parseInt(customBid) || 0); }}
+                  onKeyDown={e => { if (e.key === 'Enter') { const amount = parseInt(customBid) || 0; bid(amount); broadcastBid(amount); } }}
                   placeholder="custom..."
                   className="w-full px-3 py-2 bg-black border border-white/10 text-sm font-mono focus:outline-none focus:border-white transition-colors"
                 />
