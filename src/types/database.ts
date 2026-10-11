@@ -1,0 +1,54 @@
+export type Track = 'Programmer' | '2D Artist' | '3D Artist' | 'Game Designer';
+export type MediaType = 'video' | 'image' | 'pdf';
+export type CandidateStatus = 'available' | 'bidding' | 'drafted';
+export type Phase = 'phase1' | 'phase2';
+
+export interface Candidate {
+  id: string;
+  real_name: string;
+  track: Track;
+  score: number;
+  media_type: MediaType;
+  media_url: string;
+  pitch: string;
+  status: CandidateStatus;
+  drafted_to_house_id: string | null;
+  winning_bid: number;
+  anonymous_id: string;
+  avatar_url?: string;
+  contact?: string;
+}
+
+export interface House {
+  id: string;
+  name: string;
+  ob_lead: string;
+  color_hex: string;
+  initial_credits: number;
+  remaining_credits: number;
+}
+
+export interface BidLog {
+  id: number;
+  candidate_id: string;
+  house_id: string;
+  bid_amount: number;
+  created_at: string;
+}
+
+export interface RealtimePayload<T> {
+  eventType: 'INSERT' | 'UPDATE' | 'DELETE';
+  new: T;
+  old: T | null;
+}
+
+export interface AppState {
+  candidates: Candidate[];
+  houses: House[];
+  bidsLog: BidLog[];
+  currentCandidateId: string | null;
+  phase: Phase;
+  timerActive: boolean;
+  timerSeconds: number;
+  soundEnabled: boolean;
+}
