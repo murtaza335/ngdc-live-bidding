@@ -434,7 +434,7 @@ const AdminView: React.FC = () => {
     if (currentIdx < candidates.length - 1) {
       const nextId = candidates[currentIdx + 1].id;
       setCurrentIdx(i => i + 1);
-      resetTimer();
+      resetTimerBroadcast();
       broadcastEvent({ type: 'advance_candidate', value: nextId });
     }
   };
@@ -442,7 +442,7 @@ const AdminView: React.FC = () => {
     if (currentIdx > 0) {
       const prevId = candidates[currentIdx - 1].id;
       setCurrentIdx(i => i - 1);
-      resetTimer();
+      resetTimerBroadcast();
       broadcastEvent({ type: 'prev_candidate', value: prevId });
     }
   };
@@ -738,7 +738,7 @@ const AdminView: React.FC = () => {
                   onClick={() => {
                     setCurrentIdx(i);
                     setSelectedHouseId(null);
-                    resetTimer();
+                    resetTimerBroadcast();
                     broadcastEvent({ type: 'advance_candidate', value: c.id });
                   }}
                   className={`w-full text-left p-2 rounded transition-all ${
