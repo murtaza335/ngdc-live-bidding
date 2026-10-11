@@ -473,6 +473,14 @@ const AdminView: React.FC = () => {
       return;
     }
 
+    // Check if bid is higher than current highest bid
+    const candidateBids = bidsLog.filter(b => b.candidate_id === currentCandidate.id);
+    const highestBid = candidateBids.reduce((m, b) => Math.max(m, b.bid_amount), 0);
+    if (amount <= highestBid) {
+      showMsg('err', `Bid must be higher than current highest bid (${highestBid})`);
+      return;
+    }
+
     setLoading(true);
     const { error } = await supabase.from('bids_log').insert({
       candidate_id: currentCandidate.id,
@@ -902,7 +910,7 @@ const AdminView: React.FC = () => {
 
             {/* House selection */}
             <div className="grid grid-cols-5 gap-2">
-              {houses.map((house, idx) => (
+              {houses.map((house) => (
                 <button
                   key={house.id}
                   onClick={() => setSelectedHouseId(house.id)}
@@ -912,7 +920,7 @@ const AdminView: React.FC = () => {
                       : 'border border-white/10 hover:border-white/30'
                   }`}
                 >
-                  {idx + 1}
+                  {house.name}
                 </button>
               ))}
             </div>
