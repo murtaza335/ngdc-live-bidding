@@ -927,7 +927,7 @@ const AdminView: React.FC = () => {
 
             {/* Quick bid buttons */}
             <div className="grid grid-cols-5 gap-2">
-              {[1, 2, 5].map(a => (
+              {[5, 10, 25].map(a => (
                 <button
                   key={a}
                   onClick={() => bid(a)}
