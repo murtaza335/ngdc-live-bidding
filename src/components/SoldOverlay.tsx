@@ -4,7 +4,7 @@ import type { Candidate, House } from '../types/database';
 
 interface SoldOverlayProps {
   candidate: Candidate;
-  house: House;
+  house: House | null;
   bid: number;
   onDone: () => void;
 }
@@ -161,7 +161,7 @@ const SoldOverlay: React.FC<SoldOverlayProps> = ({ candidate, house, bid, onDone
             transition={{ delay: 0.25, type: 'spring', stiffness: 300, damping: 20 }}
             className="font-display text-3xl md:text-5xl font-black uppercase text-white"
           >
-            {house.name}
+            {house?.name ?? '—'}
           </motion.span>
         </motion.div>
       </div>

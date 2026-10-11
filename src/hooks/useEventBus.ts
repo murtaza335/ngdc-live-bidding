@@ -15,7 +15,11 @@ export type EventType =
   | 'media_sync'
   | 'media_play'
   | 'media_pause'
-  | 'media_seek';
+  | 'media_seek'
+  | 'house_selected'
+  | 'broadcast_bid'
+  | 'confirm_sold'
+  | 'pass_candidate';
 
 export interface EventPayload {
   type: EventType;

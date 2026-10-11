@@ -21,7 +21,7 @@ const ProjectorView: React.FC = () => {
   const [pinnedId, setPinnedId] = useState<string | null>(null);
   const [timerSec, setTimerSec] = useState(60);
   const [timerRunning, setTimerRunning] = useState(false);
-  const [soldInfo, setSoldInfo] = useState<{ candidate: Candidate; house: House; bid: number } | null>(null);
+  const [soldInfo, setSoldInfo] = useState<{ candidate: Candidate; house: House | null; bid: number } | null>(null);
   const [phaseOverride, setPhaseOverride] = useState<Phase | null>(null);
   // Media sync state
   const [syncedMedia, setSyncedMedia] = useState<{
@@ -99,7 +99,8 @@ const ProjectorView: React.FC = () => {
       const candidateId = payload.value;
       const candidate = allCandidates.find(c => c.id === candidateId);
       if (candidate && candidate.status === 'drafted') {
-        setSoldInfo({ candidate, house: allHouses.find(h => h.id === candidate.drafted_to_house_id) || null, bid: candidate.winning_bid || 0 });
+        const house = allHouses.find(h => h.id === candidate.drafted_to_house_id);
+        setSoldInfo({ candidate, house: house ?? null, bid: candidate.winning_bid || 0 });
         fireConfetti();
         if (soundEnabled) audio.playSoldSound();
       }

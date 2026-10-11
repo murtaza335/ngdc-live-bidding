@@ -47,6 +47,7 @@ export interface EventPayload {
   type: string;
   value?: boolean | number | string;
   timestamp: number;
+  // Media sync payload
   media?: {
     candidateId: string;
     mediaIndex?: number;
@@ -57,6 +58,8 @@ export interface EventPayload {
     duration?: number;
     fullscreen?: boolean;
   };
+  // Additional event payloads
+  house_id?: string;
 }
 
 export interface AppState {

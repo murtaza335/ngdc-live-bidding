@@ -47,6 +47,7 @@ const SyncedVideoPlayer: React.FC<SyncedMediaProps & {
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const mediaRef = useRef<BaseMediaInfo>({ candidateId, mediaType, mediaUrl: src, mediaIndex, duration: mediaDuration || 0 });
 
   const handlePlay = () => {
