@@ -51,6 +51,9 @@ export const PLACEHOLDER_CANDIDATES: Candidate[] = [
     score: 14,
     media_type: 'video',
     media_url: 'https://www.youtube.com/embed/dQw4w9WgXcQ',
+    media_urls: [
+      'https://www.youtube.com/embed/dQw4w9WgXcQ'
+    ],
     pitch: 'Building immersive WebGL experiences with dynamic lighting and particle systems.',
     status: 'available',
     drafted_to_house_id: null,
@@ -66,6 +69,12 @@ export const PLACEHOLDER_CANDIDATES: Candidate[] = [
     score: 12,
     media_type: 'image',
     media_url: 'https://picsum.photos/seed/art2d/800/600',
+    media_urls: [
+      'https://picsum.photos/seed/art2d/800/600',
+      'https://picsum.photos/seed/art2d_2/800/600',
+      'https://picsum.photos/seed/art2d_3/800/600',
+      'https://picsum.photos/seed/art2d_4/800/600',
+    ],
     pitch: 'Pixel-perfect UI art with a focus on retro-futuristic aesthetics.',
     status: 'available',
     drafted_to_house_id: null,
@@ -81,6 +90,11 @@ export const PLACEHOLDER_CANDIDATES: Candidate[] = [
     score: 15,
     media_type: 'image',
     media_url: 'https://picsum.photos/seed/art3d/800/600',
+    media_urls: [
+      'https://picsum.photos/seed/art3d/800/600',
+      'https://picsum.photos/seed/art3d_2/800/600',
+      'https://picsum.photos/seed/art3d_3/800/600',
+    ],
     pitch: 'Creating hyper-realistic game assets with PBR workflows and sculpt-to-print pipelines.',
     status: 'available',
     drafted_to_house_id: null,
@@ -96,6 +110,9 @@ export const PLACEHOLDER_CANDIDATES: Candidate[] = [
     score: 11,
     media_type: 'pdf',
     media_url: 'https://example.com/design-document.pdf',
+    media_urls: [
+      'https://example.com/design-document.pdf'
+    ],
     pitch: 'Designing compelling gameplay loops that keep players engaged for hours.',
     status: 'available',
     drafted_to_house_id: null,
@@ -111,6 +128,9 @@ export const PLACEHOLDER_CANDIDATES: Candidate[] = [
     score: 13,
     media_type: 'video',
     media_url: 'https://www.youtube.com/embed/jNQXAC9IVRw',
+    media_urls: [
+      'https://www.youtube.com/embed/jNQXAC9IVRw'
+    ],
     pitch: 'Specializing in multiplayer networking and real-time state synchronization.',
     status: 'available',
     drafted_to_house_id: null,
@@ -126,6 +146,12 @@ export const PLACEHOLDER_CANDIDATES: Candidate[] = [
     score: 9,
     media_type: 'image',
     media_url: 'https://picsum.photos/seed/concept/800/600',
+    media_urls: [
+      'https://picsum.photos/seed/concept/800/600',
+      'https://picsum.photos/seed/concept_2/800/600',
+      'https://picsum.photos/seed/concept_3/800/600',
+      'https://picsum.photos/seed/concept_4/800/600',
+    ],
     pitch: 'Concept artist passionate about character design and world-building.',
     status: 'available',
     drafted_to_house_id: null,
@@ -141,6 +167,10 @@ export const PLACEHOLDER_CANDIDATES: Candidate[] = [
     score: 10,
     media_type: 'image',
     media_url: 'https://picsum.photos/seed/env3d/800/600',
+    media_urls: [
+      'https://picsum.photos/seed/env3d/800/600',
+      'https://picsum.photos/seed/env3d_2/800/600',
+    ],
     pitch: 'Environmental 3D artist focused on creating immersive game worlds.',
     status: 'available',
     drafted_to_house_id: null,
@@ -156,6 +186,9 @@ export const PLACEHOLDER_CANDIDATES: Candidate[] = [
     score: 8,
     media_type: 'video',
     media_url: 'https://www.youtube.com/embed/9bZkp7q19f0',
+    media_urls: [
+      'https://www.youtube.com/embed/9bZkp7q19f0'
+    ],
     pitch: 'VR enthusiast building next-gen immersive experiences.',
     status: 'available',
     drafted_to_house_id: null,
@@ -171,6 +204,9 @@ export const PLACEHOLDER_CANDIDATES: Candidate[] = [
     score: 7,
     media_type: 'pdf',
     media_url: 'https://example.com/game-design-doc.pdf',
+    media_urls: [
+      'https://example.com/game-design-doc.pdf'
+    ],
     pitch: 'Narrative designer crafting emotional player journeys through choice and consequence.',
     status: 'available',
     drafted_to_house_id: null,
@@ -186,6 +222,11 @@ export const PLACEHOLDER_CANDIDATES: Candidate[] = [
     score: 6,
     media_type: 'image',
     media_url: 'https://picsum.photos/seed/uiux/800/600',
+    media_urls: [
+      'https://picsum.photos/seed/uiux/800/600',
+      'https://picsum.photos/seed/uiux_2/800/600',
+      'https://picsum.photos/seed/uiux_3/800/600',
+    ],
     pitch: 'UI/UX designer focused on intuitive game interfaces and accessibility.',
     status: 'available',
     drafted_to_house_id: null,

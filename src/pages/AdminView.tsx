@@ -1,17 +1,317 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Volume2, VolumeX, ChevronLeft, ChevronRight,
   Send, Zap, UserCheck, SkipForward, PartyPopper, Play, Pause, RotateCcw,
-  Shuffle, LayoutGrid
+  Shuffle, LayoutGrid, ChevronLeft as ChevronLeftIcon, ChevronRight as ChevronRightIcon,
+  Expand, X
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { supabase } from '../lib/supabase';
 import { useAudio } from '../hooks/useAudio';
 import { broadcastEvent } from '../hooks/useEventBus';
-import { runSnakeDraft } from '../lib/snake';
+import { runBalancedSnakeDraft } from '../lib/snake';
 import { PLACEHOLDER_HOUSES, PLACEHOLDER_CANDIDATES } from '../data/placeholder';
 import type { Candidate, House, BidLog, Phase } from '../types/database';
+
+// ============================================================
+// Media Player Components for Admin ↔ Projector Sync
+// ============================================================
+
+interface BaseMediaInfo {
+  candidateId: string;
+  mediaType: 'video' | 'image' | 'pdf';
+  mediaUrl: string;
+  mediaIndex?: number;
+  action?: 'play' | 'pause' | 'seek' | 'sync';
+}
+
+interface SyncedMediaProps {
+  src: string;
+  onSync?: (media: BaseMediaInfo) => void;
+  candidateId: string;
+  mediaType: 'video' | 'image' | 'pdf';
+}
+
+const SyncedVideoPlayer: React.FC<SyncedMediaProps & { 
+  onPlay?: (info: BaseMediaInfo) => void;
+  onPause?: (info: BaseMediaInfo) => void;
+  onSeek?: (info: BaseMediaInfo, currentTime: number) => void;
+}> = ({ 
+  src, candidateId, mediaType, onPlay, onPause, onSeek 
+}) => {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const mediaRef = useRef<BaseMediaInfo>({ candidateId, mediaType, mediaUrl: src });
+
+  const handlePlay = () => {
+    setIsPlaying(true);
+    onPlay?.(mediaRef.current);
+  };
+
+  const handlePause = () => {
+    setIsPlaying(false);
+    onPause?.(mediaRef.current);
+  };
+
+  const handleTimeUpdate = () => {
+    if (videoRef.current) {
+      const time = videoRef.current.currentTime;
+      setCurrentTime(time);
+      onSeek?.(mediaRef.current, time);
+    }
+  };
+
+  const handleLoadedMetadata = () => {
+    if (videoRef.current) {
+      setDuration(videoRef.current.duration);
+    }
+  };
+
+  const togglePlay = () => {
+    if (videoRef.current) {
+      if (videoRef.current.paused) {
+        videoRef.current.play();
+      } else {
+        videoRef.current.pause();
+      }
+    }
+  };
+
+  const toggleFullscreen = () => {
+    setIsFullscreen(!isFullscreen);
+    if (videoRef.current) {
+      if (!isFullscreen) {
+        videoRef.current.requestFullscreen();
+      } else {
+        document.exitFullscreen();
+      }
+    }
+  };
+
+  const handleEnded = () => {
+    setIsPlaying(false);
+  };
+
+  return (
+    <div className="relative w-full h-full">
+      <video
+        ref={videoRef}
+        src={src}
+        className="w-full h-full object-cover"
+        onPlay={handlePlay}
+        onPause={handlePause}
+        onTimeUpdate={handleTimeUpdate}
+        onLoadedMetadata={handleLoadedMetadata}
+        onEnded={handleEnded}
+        onClick={togglePlay}
+        onDoubleClick={toggleFullscreen}
+      />
+      {/* Controls overlay */}
+      <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-4">
+        <div className="flex items-center gap-3 text-white">
+          <button onClick={togglePlay} className="p-2 bg-white/20 rounded-full hover:bg-white/30">
+            {isPlaying ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5" />}
+          </button>
+          <div className="flex-1">
+            <input
+              type="range"
+              min="0"
+              max={duration || 100}
+              value={currentTime}
+              onChange={(e) => {
+                const time = parseFloat(e.target.value);
+                setCurrentTime(time);
+                if (videoRef.current) {
+                  videoRef.current.currentTime = time;
+                }
+                onSeek?.(mediaRef.current, time);
+              }}
+              className="w-full h-1 bg-white/30 rounded-full appearance-none cursor-pointer"
+            />
+          </div>
+          <span className="text-xs font-mono text-grey-300">
+            {formatTime(currentTime)} / {formatTime(duration)}
+          </span>
+          <button 
+            onClick={toggleFullscreen} 
+            className="p-2 bg-white/20 rounded-full hover:bg-white/30"
+            title={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
+          >
+            {isFullscreen ? <X className="w-5 h-5" /> : <Expand className="w-5 h-5" />}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const SyncedImageViewer: React.FC<SyncedMediaProps> = ({ 
+  src, onSync, candidateId, mediaType 
+}) => {
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const mediaRef = useRef<BaseMediaInfo>({ candidateId, mediaType, mediaUrl: src });
+
+  const handleFullscreen = () => {
+    setIsFullscreen(!isFullscreen);
+    // Sync fullscreen state with admin
+    onSync?.(mediaRef.current);
+  };
+
+  return (
+    <div className="relative w-full h-full" onClick={handleFullscreen}>
+      <img 
+        src={src} 
+        alt="Candidate media"
+        className={`w-full h-full object-contain ${isFullscreen ? 'cursor-zoom-out' : 'cursor-zoom-in'}`}
+      />
+      {isFullscreen && (
+        <div className="fixed inset-0 z-50 bg-black flex items-center justify-center">
+          <img 
+            src={src} 
+            alt="Candidate media fullscreen"
+            className="max-w-[90vw] max-h-[90vh] object-contain"
+          />
+          <button 
+            onClick={() => setIsFullscreen(false)}
+            className="absolute top-4 right-4 p-2 bg-white/20 rounded-full hover:bg-white/30"
+          >
+            <X className="w-6 h-6 text-white" />
+          </button>
+        </div>
+      )}
+      <div className="absolute bottom-2 right-2 text-xs text-grey-400 bg-black/50 px-2 py-1 rounded">
+        Click to expand
+      </div>
+    </div>
+  );
+};
+
+interface ImageCarouselProps {
+  images: string[];
+  candidateId: string;
+  onSync?: (media: BaseMediaInfo) => void;
+}
+
+const ImageCarousel: React.FC<ImageCarouselProps> = ({ 
+  images, candidateId, onSync 
+}) => {
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+
+  const goToNext = () => {
+    setCurrentIndex(i => (i + 1) % images.length);
+    onSync?.({
+      candidateId,
+      mediaIndex: (currentIndex + 1) % images.length,
+      mediaType: 'image',
+      mediaUrl: images[(currentIndex + 1) % images.length],
+    });
+  };
+  const goToPrev = () => {
+    setCurrentIndex(i => (i - 1 + images.length) % images.length);
+    onSync?.({
+      candidateId,
+      mediaIndex: (currentIndex - 1 + images.length) % images.length,
+      mediaType: 'image',
+      mediaUrl: images[(currentIndex - 1 + images.length) % images.length],
+    });
+  };
+
+  return (
+    <div className="relative w-full h-full">
+      {!isFullscreen && (
+        <>
+          <button 
+            onClick={goToPrev}
+            className="absolute left-2 top-1/2 -translate-y-1/2 p-2 bg-white/20 rounded-full hover:bg-white/30 z-10"
+            aria-label="Previous image"
+          >
+            <ChevronLeftIcon className="w-6 h-6 text-white" />
+          </button>
+          <button 
+            onClick={goToNext}
+            className="absolute right-2 top-1/2 -translate-y-1/2 p-2 bg-white/20 rounded-full hover:bg-white/30 z-10"
+            aria-label="Next image"
+          >
+            <ChevronRightIcon className="w-6 h-6 text-white" />
+          </button>
+        </>
+      )}
+      <img 
+        src={images[currentIndex]} 
+        alt={`Image ${currentIndex + 1}`}
+        className={`w-full h-full object-contain ${isFullscreen ? 'cursor-zoom-out' : ''}`}
+        onClick={() => setIsFullscreen(true)}
+      />
+      <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex gap-1">
+        {images.map((_, i) => (
+          <button
+            key={i}
+            onClick={() => setCurrentIndex(i)}
+            className={`w-2 h-2 rounded-full transition-all ${
+              i === currentIndex ? 'bg-white' : 'bg-white/40 hover:bg-white/60'
+            }`}
+            aria-label={`Go to image ${i + 1}`}
+          />
+        ))}
+      </div>
+      {isFullscreen && (
+        <div className="fixed inset-0 z-50 bg-black flex items-center justify-center">
+          <button 
+            onClick={goToPrev}
+            className="absolute left-4 p-3 bg-white/20 rounded-full hover:bg-white/30"
+            aria-label="Previous image"
+          >
+            <ChevronLeftIcon className="w-8 h-8 text-white" />
+          </button>
+          <img 
+            src={images[currentIndex]} 
+            alt={`Image ${currentIndex + 1}`}
+            className="max-w-[90vw] max-h-[90vh] object-contain"
+          />
+          <button 
+            onClick={goToNext}
+            className="absolute right-4 p-3 bg-white/20 rounded-full hover:bg-white/30"
+            aria-label="Next image"
+          >
+            <ChevronRightIcon className="w-8 h-8 text-white" />
+          </button>
+          <button 
+            onClick={() => setIsFullscreen(false)}
+            className="absolute top-4 right-4 p-3 bg-white/20 rounded-full hover:bg-white/30"
+          >
+            <X className="w-6 h-6 text-white" />
+          </button>
+          <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-2">
+            {images.map((_, i) => (
+              <button
+                key={i}
+                onClick={() => setCurrentIndex(i)}
+                className={`w-3 h-3 rounded-full transition-all ${
+                  i === currentIndex ? 'bg-white' : 'bg-white/40'
+                }`}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+      <div className="absolute bottom-2 left-2 text-xs text-grey-400 bg-black/50 px-2 py-1 rounded">
+        {currentIndex + 1} / {images.length}
+      </div>
+    </div>
+  );
+};
+
+const formatTime = (seconds: number): string => {
+  if (!seconds || isNaN(seconds)) return '0:00';
+  const mins = Math.floor(seconds / 60);
+  const secs = Math.floor(seconds % 60);
+  return `${mins}:${secs.toString().padStart(2, '0')}`;
+};
 
 const AdminView: React.FC = () => {
   const audio = useAudio();
@@ -321,12 +621,22 @@ const AdminView: React.FC = () => {
 
   // ---- Snake draft of leftover members ----
   const leftovers = candidates.filter(c => c.status !== 'drafted');
+  
+  // Calculate current member counts per house for balanced distribution
+  const memberCounts = new Map<string, number>();
+  houses.forEach(h => memberCounts.set(h.id, 0));
+  candidates.filter(c => c.status === 'drafted').forEach(c => {
+    if (c.drafted_to_house_id) {
+      memberCounts.set(c.drafted_to_house_id, (memberCounts.get(c.drafted_to_house_id) || 0) + 1);
+    }
+  });
+
   const runSnake = async () => {
     if (leftovers.length === 0) {
       showMsg('err', 'No leftover members to assign');
       return;
     }
-    const result = runSnakeDraft(leftovers, houses);
+    const result = runBalancedSnakeDraft(leftovers, houses, memberCounts);
     setLoading(true);
     for (const a of result.assignments) {
       await supabase.from('candidates').update({
@@ -341,7 +651,7 @@ const AdminView: React.FC = () => {
     }));
     broadcastEvent({ type: 'snake_done' });
     if (soundEnabled) audio.playSoldSound();
-    showMsg('ok', `Snake draft complete — ${result.assignments.length} members assigned`);
+    showMsg('ok', `Balanced snake draft complete — ${result.assignments.length} members assigned`);
     setLoading(false);
   };
 
@@ -358,6 +668,23 @@ const AdminView: React.FC = () => {
     '3D Artist': '3D',
     'Game Designer': 'Designer',
   };
+
+  // Media sync helpers
+  const broadcastMediaSync = useCallback((media: BaseMediaInfo) => {
+    broadcastEvent({ type: 'media_sync', media: { ...media, action: 'sync' } });
+  }, []);
+
+  const broadcastMediaPlay = useCallback((media: BaseMediaInfo) => {
+    broadcastEvent({ type: 'media_play', media: { ...media, action: 'play' } });
+  }, []);
+
+  const broadcastMediaPause = useCallback((media: BaseMediaInfo) => {
+    broadcastEvent({ type: 'media_pause', media: { ...media, action: 'pause' } });
+  }, []);
+
+  const broadcastMediaSeek = useCallback((media: BaseMediaInfo, currentTime: number) => {
+    broadcastEvent({ type: 'media_seek', media: { ...media, action: 'seek', currentTime } });
+  }, []);
 
   return (
     <div className="min-h-screen bg-black text-white p-8 overflow-hidden">
@@ -427,17 +754,37 @@ const AdminView: React.FC = () => {
                 </button>
               ))}
             </div>
-          </nav>
+</nav>
 
-          {/* CENTER — candidate preview + controls */}
+            {/* CENTER — candidate preview + controls */}
           <section className="col-span-5 flex flex-col">
             {/* Media / candidate card */}
-            <div className="card mb-4 aspect-video overflow-hidden">
-              {currentCandidate.media_type === 'video' && (
-                <iframe src={currentCandidate.media_url} className="w-full h-full" allowFullScreen />
+            <div className="card mb-4 aspect-video overflow-hidden relative">
+              {/* Multiple images carousel */}
+              {currentCandidate.media_type === 'image' && currentCandidate.media_urls && currentCandidate.media_urls.length > 1 && (
+                <ImageCarousel 
+                  images={currentCandidate.media_urls}
+                  candidateId={currentCandidate.id}
+                  onSync={broadcastMediaSync}
+                />
               )}
-              {currentCandidate.media_type === 'image' && (
-                <img src={currentCandidate.media_url} alt={currentCandidate.anonymous_id} className="w-full h-full object-cover" />
+              {currentCandidate.media_type === 'video' && (
+                <SyncedVideoPlayer 
+                  src={currentCandidate.media_url}
+                  candidateId={currentCandidate.id}
+                  mediaType="video"
+                  onPlay={broadcastMediaPlay}
+                  onPause={broadcastMediaPause}
+                  onSeek={broadcastMediaSeek}
+                />
+              )}
+              {currentCandidate.media_type === 'image' && (!currentCandidate.media_urls || currentCandidate.media_urls.length <= 1) && (
+                <SyncedImageViewer 
+                  src={currentCandidate.media_url}
+                  candidateId={currentCandidate.id}
+                  mediaType="image"
+                  onSync={broadcastMediaSync}
+                />
               )}
               {currentCandidate.media_type === 'pdf' && (
                 <div className="w-full h-full flex items-center justify-center bg-white/5">

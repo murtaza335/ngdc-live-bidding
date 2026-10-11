@@ -11,12 +11,27 @@ export type EventType =
   | 'advance_candidate'
   | 'prev_candidate'
   | 'set_phase'
-  | 'snake_done';
+  | 'snake_done'
+  | 'media_sync'
+  | 'media_play'
+  | 'media_pause'
+  | 'media_seek';
 
 export interface EventPayload {
   type: EventType;
   value?: boolean | number | string;
   timestamp: number;
+  // Media sync payload
+  media?: {
+    candidateId: string;
+    mediaIndex?: number;
+    mediaType: 'video' | 'image' | 'pdf';
+    mediaUrl: string;
+    action: 'play' | 'pause' | 'seek' | 'sync';
+    currentTime?: number;
+    duration?: number;
+    fullscreen?: boolean;
+  };
 }
 
 const CHANNEL_NAME = 'ngdc-events';

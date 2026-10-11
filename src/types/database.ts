@@ -10,6 +10,7 @@ export interface Candidate {
   score: number;
   media_type: MediaType;
   media_url: string;
+  media_urls?: string[];
   pitch: string;
   status: CandidateStatus;
   drafted_to_house_id: string | null;
@@ -40,6 +41,22 @@ export interface RealtimePayload<T> {
   eventType: 'INSERT' | 'UPDATE' | 'DELETE';
   new: T;
   old: T | null;
+}
+
+export interface EventPayload {
+  type: string;
+  value?: boolean | number | string;
+  timestamp: number;
+  media?: {
+    candidateId: string;
+    mediaIndex?: number;
+    mediaType: 'video' | 'image' | 'pdf';
+    mediaUrl: string;
+    action: 'play' | 'pause' | 'seek' | 'sync';
+    currentTime?: number;
+    duration?: number;
+    fullscreen?: boolean;
+  };
 }
 
 export interface AppState {

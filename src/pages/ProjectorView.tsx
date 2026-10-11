@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Volume2, VolumeX, FileText } from 'lucide-react';
+import { Volume2, VolumeX, FileText, X } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { useSupabaseRealtime } from '../hooks/useSupabaseRealtime';
 import { useAudio } from '../hooks/useAudio';
@@ -23,6 +23,17 @@ const ProjectorView: React.FC = () => {
   const [timerRunning, setTimerRunning] = useState(false);
   const [soldInfo, setSoldInfo] = useState<{ candidate: Candidate; house: House; bid: number } | null>(null);
   const [phaseOverride, setPhaseOverride] = useState<Phase | null>(null);
+  // Media sync state
+  const [syncedMedia, setSyncedMedia] = useState<{
+    candidateId: string;
+    mediaIndex?: number;
+    mediaType: 'video' | 'image' | 'pdf';
+    mediaUrl: string;
+    currentTime?: number;
+    duration?: number;
+    isPlaying?: boolean;
+    isFullscreen?: boolean;
+  } | null>(null);
 
   const allCandidates = candidates.length ? candidates : PLACEHOLDER_CANDIDATES;
   const allHouses = houses.length ? houses : PLACEHOLDER_HOUSES;
@@ -46,7 +57,7 @@ const ProjectorView: React.FC = () => {
     });
   };
 
-  // ---- Listen to admin broadcasts (confetti, reveal, phase, candidate, timer) ----
+  // ---- Listen to admin broadcasts (confetti, reveal, phase, candidate, timer, media) ----
   useEventBus((payload) => {
     if (payload.type === 'reveal_identity') {
       setShowRealName(Boolean(payload.value));
@@ -79,6 +90,19 @@ const ProjectorView: React.FC = () => {
     }
     if (payload.type === 'set_phase' && typeof payload.value === 'string') {
       setPhaseOverride(payload.value as Phase);
+    }
+    // Media sync events
+    if (payload.type === 'media_sync' && payload.media) {
+      setSyncedMedia(payload.media);
+    }
+    if (payload.type === 'media_play' && payload.media) {
+      setSyncedMedia(prev => prev ? { ...prev, ...payload.media!, isPlaying: true } : null);
+    }
+    if (payload.type === 'media_pause' && payload.media) {
+      setSyncedMedia(prev => prev ? { ...prev, ...payload.media!, isPlaying: false } : null);
+    }
+    if (payload.type === 'media_seek' && payload.media) {
+      setSyncedMedia(prev => prev ? { ...prev, ...payload.media!, currentTime: payload.media!.currentTime } : null);
     }
   });
 
@@ -214,7 +238,10 @@ const ProjectorView: React.FC = () => {
   }, []);
 
   const renderMedia = (candidate: Candidate) => {
-    if (brokenMedia[candidate.id]) {
+    // Check for synced media from admin
+    const hasSyncedMedia = syncedMedia && syncedMedia.candidateId === candidate.id;
+
+    if (brokenMedia[candidate.id] && !hasSyncedMedia) {
       return (
         <div className="w-full h-full flex flex-col items-center justify-center gap-4 bg-white/5">
           <FileText className="w-20 h-20 text-grey-600" strokeWidth={1} />
@@ -224,6 +251,30 @@ const ProjectorView: React.FC = () => {
         </div>
       );
     }
+
+    // If we have synced media from admin, show that
+    if (hasSyncedMedia && syncedMedia) {
+      const sm = syncedMedia;
+      if (sm.mediaType === 'video') {
+        return (
+          <SyncedProjectorVideo
+            src={sm.mediaUrl}
+            currentTime={sm.currentTime || 0}
+            isPlaying={sm.isPlaying || false}
+          />
+        );
+      }
+      if (sm.mediaType === 'image') {
+        return (
+          <SyncedProjectorImage
+            src={sm.mediaUrl}
+            isFullscreen={sm.isFullscreen || false}
+          />
+        );
+      }
+    }
+
+    // Default media display
     if (candidate.media_type === 'video') {
       return (
         <iframe
@@ -248,6 +299,74 @@ const ProjectorView: React.FC = () => {
     return (
       <div className="w-full h-full flex items-center justify-center">
         <FileText className="w-24 h-24 text-grey-600" strokeWidth={1} />
+      </div>
+    );
+  };
+
+  // Synced video player for projector (read-only, controlled by admin)
+  const SyncedProjectorVideo: React.FC<{
+    src: string;
+    currentTime: number;
+    isPlaying: boolean;
+  }> = ({ src, currentTime, isPlaying }) => {
+    const videoRef = useRef<HTMLVideoElement>(null);
+
+    useEffect(() => {
+      if (videoRef.current) {
+        videoRef.current.currentTime = currentTime;
+      }
+    }, [currentTime]);
+
+    useEffect(() => {
+      if (videoRef.current) {
+        if (isPlaying) {
+          videoRef.current.play().catch(() => {});
+        } else {
+          videoRef.current.pause();
+        }
+      }
+    }, [isPlaying]);
+
+    return (
+      <video
+        ref={videoRef}
+        src={src}
+        className="w-full h-full object-cover"
+        muted
+        playsInline
+      />
+    );
+  };
+
+  // Synced image viewer for projector (read-only, controlled by admin)
+  const SyncedProjectorImage: React.FC<{
+    src: string;
+    isFullscreen: boolean;
+  }> = ({ src, isFullscreen }) => {
+    const [isZoomed, setIsZoomed] = useState(false);
+
+    return (
+      <div className="relative w-full h-full" onClick={() => setIsZoomed(!isZoomed)}>
+        <img 
+          src={src} 
+          alt="Synced media"
+          className={`w-full h-full object-contain ${isZoomed ? 'cursor-zoom-out' : 'cursor-zoom-in'}`}
+        />
+        {isFullscreen && (
+          <div className="fixed inset-0 z-50 bg-black flex items-center justify-center">
+            <img 
+              src={src} 
+              alt="Zoomed"
+              className="max-w-[90vw] max-h-[90vh] object-contain"
+            />
+            <button 
+              onClick={() => setIsZoomed(false)}
+              className="absolute top-4 right-4 p-2 bg-white/20 rounded-full hover:bg-white/30"
+            >
+              <X className="w-6 h-6 text-white" />
+            </button>
+          </div>
+        )}
       </div>
     );
   };
