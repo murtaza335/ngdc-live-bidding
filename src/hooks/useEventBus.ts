@@ -19,7 +19,8 @@ export type EventType =
   | 'house_selected'
   | 'broadcast_bid'
   | 'confirm_sold'
-  | 'pass_candidate';
+  | 'pass_candidate'
+  | 'platinum_transition_complete';
 
 export interface EventPayload {
   type: EventType;
@@ -35,6 +36,7 @@ export interface EventPayload {
     currentTime?: number;
     duration?: number;
     fullscreen?: boolean;
+    isPlaying?: boolean;
   };
 }
 

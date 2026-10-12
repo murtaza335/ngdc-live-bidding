@@ -1,14 +1,18 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Volume2, VolumeX, FileText, X } from 'lucide-react';
+import { Volume2, VolumeX, FileText, Crown, Pause } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { useSupabaseRealtime } from '../hooks/useSupabaseRealtime';
 import { useAudio } from '../hooks/useAudio';
 import { useEventBus } from '../hooks/useEventBus';
 import SoldOverlay from '../components/SoldOverlay';
 import HouseReveal from '../components/HouseReveal';
-import { PLACEHOLDER_HOUSES, PLACEHOLDER_CANDIDATES } from '../data/placeholder';
 import type { Candidate, House, Phase } from '../types/database';
+import PlatinumTransition from '../components/PlatinumTransition';
+import SnakeDraftAnimation from '../components/SnakeDraftAnimation';
+import YouTubePlayer from '../components/YouTubePlayer';
+import { withAutoplay } from '../lib/media';
+import { isYouTubeUrl } from '../lib/youtube';
 
 const ProjectorView: React.FC = () => {
   const { candidates, houses, bidsLog, phase, loading } = useSupabaseRealtime();
@@ -32,11 +36,11 @@ const ProjectorView: React.FC = () => {
     currentTime?: number;
     duration?: number;
     isPlaying?: boolean;
-    isFullscreen?: boolean;
+    fullscreen?: boolean;
   } | null>(null);
 
-  const allCandidates = candidates.length ? candidates : PLACEHOLDER_CANDIDATES;
-  const allHouses = houses.length ? houses : PLACEHOLDER_HOUSES;
+  const allCandidates = candidates;
+  const allHouses = houses;
 
   // Effective phase: broadcast override wins, otherwise the persisted setting
   const effectivePhase = phaseOverride ?? phase;
@@ -114,16 +118,34 @@ const ProjectorView: React.FC = () => {
     }
     // Media sync events
     if (payload.type === 'media_sync' && payload.media) {
-      setSyncedMedia(payload.media);
+      setSyncedMedia(prev => {
+        const base = prev && prev.candidateId === payload.media!.candidateId ? prev : {};
+        return { ...base, ...payload.media! } as typeof prev;
+      });
     }
     if (payload.type === 'media_play' && payload.media) {
-      setSyncedMedia(prev => prev ? { ...prev, ...payload.media!, isPlaying: true } : null);
+      // Create the synced entry if it doesn't exist yet (first play/pause may
+      // arrive before any explicit media_sync).
+      setSyncedMedia(prev => {
+        const base = prev && prev.candidateId === payload.media!.candidateId ? prev : { ...payload.media! };
+        return { ...base, ...payload.media!, isPlaying: true } as typeof prev;
+      });
     }
     if (payload.type === 'media_pause' && payload.media) {
-      setSyncedMedia(prev => prev ? { ...prev, ...payload.media!, isPlaying: false } : null);
+      setSyncedMedia(prev => {
+        const base = prev && prev.candidateId === payload.media!.candidateId ? prev : { ...payload.media! };
+        return { ...base, ...payload.media!, isPlaying: false } as typeof prev;
+      });
     }
     if (payload.type === 'media_seek' && payload.media) {
-      setSyncedMedia(prev => prev ? { ...prev, ...payload.media!, currentTime: payload.media!.currentTime } : null);
+      setSyncedMedia(prev => {
+        const base = prev && prev.candidateId === payload.media!.candidateId ? prev : { ...payload.media! };
+        return { ...base, ...payload.media!, currentTime: payload.media!.currentTime } as typeof prev;
+      });
+    }
+    if (payload.type === 'platinum_transition_complete') {
+      // Platinum transition completed, phase will be updated by admin
+      setPhaseOverride(null);
     }
   });
 
@@ -277,6 +299,14 @@ const ProjectorView: React.FC = () => {
     if (hasSyncedMedia && syncedMedia) {
       const sm = syncedMedia;
       if (sm.mediaType === 'video') {
+        if (isYouTubeUrl(sm.mediaUrl)) {
+          return (
+            <SyncedProjectorYouTube
+              src={sm.mediaUrl}
+              isFullscreen={sm.fullscreen || false}
+            />
+          );
+        }
         return (
           <SyncedProjectorVideo
             src={sm.mediaUrl}
@@ -287,10 +317,7 @@ const ProjectorView: React.FC = () => {
       }
       if (sm.mediaType === 'image') {
         return (
-          <SyncedProjectorImage
-            src={sm.mediaUrl}
-            isFullscreen={sm.isFullscreen || false}
-          />
+          <SyncedProjectorImage src={sm.mediaUrl} />
         );
       }
     }
@@ -299,7 +326,8 @@ const ProjectorView: React.FC = () => {
     if (candidate.media_type === 'video') {
       return (
         <iframe
-          src={candidate.media_url}
+          key={candidate.id}
+          src={withAutoplay(candidate.media_url)}
           className="w-full h-full"
           allowFullScreen
           allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
@@ -329,68 +357,79 @@ const ProjectorView: React.FC = () => {
     src: string;
     currentTime: number;
     isPlaying: boolean;
-  }> = ({ src, currentTime, isPlaying }) => {
+    objectFit?: string;
+  }> = ({ src, currentTime, isPlaying, objectFit = 'object-cover' }) => {
     const videoRef = useRef<HTMLVideoElement>(null);
 
+    // Only seek when we've drifted noticeably — avoids stutter from the
+    // frequent timeupdate broadcasts coming from the admin panel.
     useEffect(() => {
-      if (videoRef.current) {
-        videoRef.current.currentTime = currentTime;
+      const el = videoRef.current;
+      if (!el) return;
+      if (Math.abs(el.currentTime - currentTime) > 0.75) {
+        el.currentTime = currentTime;
       }
     }, [currentTime]);
 
     useEffect(() => {
-      if (videoRef.current) {
-        if (isPlaying) {
-          videoRef.current.play().catch(() => {});
-        } else {
-          videoRef.current.pause();
-        }
+      const el = videoRef.current;
+      if (!el) return;
+      if (isPlaying) {
+        el.play().catch(() => {});
+      } else {
+        el.pause();
       }
     }, [isPlaying]);
 
     return (
-      <video
-        ref={videoRef}
-        src={src}
-        className="w-full h-full object-cover"
-        muted
-        playsInline
-      />
-    );
-  };
-
-  // Synced image viewer for projector (read-only, controlled by admin)
-  const SyncedProjectorImage: React.FC<{
-    src: string;
-    isFullscreen: boolean;
-  }> = ({ src, isFullscreen }) => {
-    const [isZoomed, setIsZoomed] = useState(false);
-
-    return (
-      <div className="relative w-full h-full" onClick={() => setIsZoomed(!isZoomed)}>
-        <img 
-          src={src} 
-          alt="Synced media"
-          className={`w-full h-full object-contain ${isZoomed ? 'cursor-zoom-out' : 'cursor-zoom-in'}`}
+      <div className="relative w-full h-full">
+        <video
+          ref={videoRef}
+          src={src}
+          className={`w-full h-full ${objectFit}`}
+          autoPlay
+          muted
+          playsInline
         />
-        {isFullscreen && (
-          <div className="fixed inset-0 z-50 bg-black flex items-center justify-center">
-            <img 
-              src={src} 
-              alt="Zoomed"
-              className="max-w-[90vw] max-h-[90vh] object-contain"
-            />
-            <button 
-              onClick={() => setIsZoomed(false)}
-              className="absolute top-4 right-4 p-2 bg-white/20 rounded-full hover:bg-white/30"
-            >
-              <X className="w-6 h-6 text-white" />
-            </button>
+        {!isPlaying && (
+          <div className="absolute inset-0 flex items-center justify-center bg-black/50 z-10 pointer-events-none">
+            <div className="bg-white/10 backdrop-blur-sm rounded-full p-6">
+              <Pause className="w-16 h-16 text-white/90" />
+            </div>
           </div>
         )}
       </div>
     );
   };
+
+  // Synced YouTube player for projector (read-only, controlled by admin)
+  // Synced YouTube player for projector (autoplay + fullscreen sync)
+  const SyncedProjectorYouTube: React.FC<{
+    src: string;
+    isFullscreen?: boolean;
+    className?: string;
+  }> = ({ src, className }) => {
+    return (
+      <div className="relative w-full h-full">
+        <YouTubePlayer
+          url={src}
+          autoplay
+          muted
+          controls={false}
+          className={className ?? 'w-full h-full'}
+        />
+      </div>
+    );
+  };
+
+  // Synced image viewer for projector (read-only, controlled by admin)
+  const SyncedProjectorImage: React.FC<{ src: string }> = ({ src }) => (
+    <img
+      src={src}
+      alt="Synced media"
+      className="w-full h-full object-contain"
+    />
+  );
 
   // ---- PHASE 2: House Reveal / final lineups ----
   if (effectivePhase === 'phase2') {
@@ -406,6 +445,49 @@ const ProjectorView: React.FC = () => {
           <HouseReveal houses={allHouses} candidates={allCandidates} />
         </motion.div>
       </AnimatePresence>
+    );
+  }
+
+  // ---- PHASE: Platinum Transition ----
+  if (effectivePhase === 'platinum_transition') {
+    const platinumCandidates = allCandidates.filter(c => c.isPlatinum === true);
+    
+    return (
+      <PlatinumTransition
+        platinumCandidates={platinumCandidates}
+        onComplete={() => {
+          // After transition, move to snake draft phase
+          setPhaseOverride('snake_draft');
+        }}
+      />
+    );
+  }
+
+  // ---- PHASE: Snake Draft ----
+  if (effectivePhase === 'snake_draft') {
+    const leftovers = allCandidates.filter(c => c.status !== 'drafted');
+    const platinumCandidates = allCandidates.filter(c => c.isPlatinum === true);
+    
+    // If all platinum are drafted, we're done with snake draft
+    const allPlatinumDrafted = platinumCandidates.every(c => c.status === 'drafted');
+    
+    if (allPlatinumDrafted && leftovers.length === 0) {
+      // Move to phase2
+      setPhaseOverride('phase2');
+      return <div>Transitioning to House Reveal...</div>;
+    }
+
+    return (
+      <SnakeDraftAnimation
+        assignments={[] as any[]}
+        candidates={allCandidates}
+        houses={allHouses}
+        onComplete={() => {
+          // Snake draft complete, move to phase2
+          setPhaseOverride('phase2');
+        }}
+        duration={6000}
+      />
     );
   }
 
@@ -453,7 +535,7 @@ const ProjectorView: React.FC = () => {
           </AnimatePresence>
 
           <span className="pill px-5 py-2 text-xs font-semibold uppercase text-grey-300">
-            Phase 1 · Anchor Draft
+            Phase · Anchor Draft
           </span>
           <button
             onClick={() => {
@@ -492,14 +574,11 @@ const ProjectorView: React.FC = () => {
                     >
                       {showRealName ? currentCandidate.real_name : currentCandidate.anonymous_id}
                     </motion.span>
+                    <span className="w-12 h-px bg-white/20" />
+                    <span className="pill px-4 py-1.5 text-xs font-medium uppercase text-grey-300">
+                      {currentCandidate.track}
+                    </span>
                   </AnimatePresence>
-                  <span className="w-12 h-px bg-white/20" />
-                  <span className="pill px-4 py-1.5 text-xs font-medium uppercase text-grey-300">
-                    {currentCandidate.track}
-                  </span>
-                  <span className="pill px-4 py-1.5 text-xs font-medium uppercase text-grey-300">
-                    Score {currentCandidate.score}/15
-                  </span>
                 </div>
               </div>
 
@@ -543,6 +622,57 @@ const ProjectorView: React.FC = () => {
                     </motion.div>
                   )}
                 </AnimatePresence>
+
+                {/* PITCH - BIG DIALOGUE for platinum candidates (3-5 seconds only) */}
+                {!currentCandidate.isPlatinum ? (
+                  null
+                ) : (
+                  <AnimatePresence>
+                    {/* Pitch shown as big dialogue for 3-5 seconds during platinum transition */}
+                    {('platinum_transition' as Phase) === effectivePhase && (
+                      <motion.div
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -20 }}
+                        transition={{ duration: 0.5 }}
+                        className="absolute inset-0 bg-black/95 backdrop-blur-xl flex flex-col items-center justify-center z-20 px-8"
+                      >
+                        <motion.div
+                          initial={{ opacity: 0, scale: 0.9 }}
+                          animate={{ opacity: 1, scale: 1 }}
+                          transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
+                          className="text-center max-w-2xl"
+                        >
+                          <div className="flex items-center justify-center gap-4 mb-6">
+                            <Crown className="w-8 h-8 text-amber-400" />
+                            <span className="font-display text-2xl font-bold uppercase tracking-[0.2em] text-amber-400">
+                              PLATINUM PITCH
+                            </span>
+                            <Crown className="w-8 h-8 text-amber-400" />
+                          </div>
+                          <motion.p
+                            initial={{ opacity: 0, y: 20 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ delay: 0.2, duration: 0.6 }}
+                            className="font-display text-4xl md:text-5xl lg:text-6xl font-light leading-relaxed text-white"
+                            style={{ textShadow: '0 0 60px rgba(255,215,0,0.3)' }}
+                          >
+                            "{currentCandidate.pitch}"
+                          </motion.p>
+                        </motion.div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                )}
+
+                <motion.p
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={{ delay: 0.3, duration: 0.6 }}
+                  className="mt-10 text-2xl text-grey-400 font-light italic leading-relaxed max-w-3xl"
+                >
+                  “{currentCandidate.pitch}”
+                </motion.p>
               </motion.div>
 
               <motion.p
@@ -685,6 +815,41 @@ const ProjectorView: React.FC = () => {
           })}
         </div>
       </footer>
+
+      {/* Fullscreen media overlay — mirrors the admin's fullscreen toggle */}
+      <AnimatePresence>
+        {syncedMedia?.fullscreen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.25 }}
+            className="fixed inset-0 z-[9997] bg-black flex items-center justify-center"
+          >
+            {syncedMedia.mediaType === 'video' ? (
+              isYouTubeUrl(syncedMedia.mediaUrl) ? (
+                <SyncedProjectorYouTube
+                  src={syncedMedia.mediaUrl}
+                  isFullscreen={true}
+                />
+              ) : (
+                <SyncedProjectorVideo
+                  src={syncedMedia.mediaUrl}
+                  currentTime={syncedMedia.currentTime || 0}
+                  isPlaying={syncedMedia.isPlaying || false}
+                  objectFit="object-contain"
+                />
+              )
+            ) : (
+              <img
+                src={syncedMedia.mediaUrl}
+                alt="Fullscreen media"
+                className="max-w-[95vw] max-h-[95vh] object-contain"
+              />
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* SOLD takeover overlay */}
       <AnimatePresence>

@@ -2,6 +2,24 @@ import { useEffect, useState, useCallback } from 'react';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import type { Candidate, House, BidLog, RealtimePayload, Phase } from '../types/database';
 
+// Map database columns (snake_case) to Candidate interface (camelCase)
+export const mapCandidate = (c: any): Candidate => ({
+  id: c.id,
+  real_name: c.real_name,
+  track: c.track,
+  media_type: c.media_type,
+  media_url: c.media_url,
+  media_urls: c.media_urls,
+  pitch: c.pitch,
+  status: c.status,
+  isPlatinum: c.is_platinum,
+  drafted_to_house_id: c.drafted_to_house_id,
+  winning_bid: c.winning_bid,
+  anonymous_id: c.anonymous_id,
+  avatar_url: c.avatar_url,
+  contact: c.contact,
+});
+
 export function useSupabaseRealtime() {
   const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [houses, setHouses] = useState<House[]>([]);
@@ -30,7 +48,8 @@ export function useSupabaseRealtime() {
       // Settings is optional — ignore error if the table doesn't exist yet
       if (!settingsRes.error && settingsRes.data) setPhase(settingsRes.data.value as Phase);
 
-      setCandidates(candidatesRes.data as Candidate[]);
+      const mappedCandidates = candidatesRes.data.map(mapCandidate);
+      setCandidates(mappedCandidates as Candidate[]);
       setHouses(housesRes.data as House[]);
       setBidsLog(bidsRes.data as BidLog[]);
     } catch (err) {
@@ -48,11 +67,17 @@ export function useSupabaseRealtime() {
     const candidatesChannel = supabase
       .channel('candidates-changes')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'candidates' } as any, (payload: unknown) => {
-        const p = payload as RealtimePayload<Candidate>;
+        const p = payload as RealtimePayload<any>;
         setCandidates(prev => {
-          if (p.eventType === 'INSERT') return [...prev, p.new].sort((a, b) => a.id.localeCompare(b.id));
-          if (p.eventType === 'UPDATE') return prev.map(c => (c.id === p.new.id ? p.new : c)).sort((a, b) => a.id.localeCompare(b.id));
-          if (p.eventType === 'DELETE') return prev.filter(c => c.id !== (p.old as Candidate)?.id);
+          if (p.eventType === 'INSERT') {
+            return [...prev, mapCandidate(p.new)].sort((a, b) => a.id.localeCompare(b.id));
+          }
+          if (p.eventType === 'UPDATE') {
+            return prev.map(c => (c.id === p.new.id ? mapCandidate(p.new) : c)).sort((a, b) => a.id.localeCompare(b.id));
+          }
+          if (p.eventType === 'DELETE') {
+            return prev.filter(c => c.id !== (p.old as any)?.id);
+          }
           return prev;
         });
       })

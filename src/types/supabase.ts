@@ -8,37 +8,49 @@ export interface Database {
           id: string;
           real_name: string;
           track: 'Programmer' | '2D Artist' | '3D Artist' | 'Game Designer';
-          score: number;
           media_type: 'video' | 'image' | 'pdf';
           media_url: string;
+          media_urls: string[] | null;
           pitch: string;
           status: 'available' | 'bidding' | 'drafted';
+          is_platinum: boolean;
           drafted_to_house_id: string | null;
           winning_bid: number;
+          anonymous_id: string | null;
+          avatar_url: string | null;
+          contact: string | null;
         };
         Insert: {
           id: string;
           real_name: string;
           track: 'Programmer' | '2D Artist' | '3D Artist' | 'Game Designer';
-          score: number;
           media_type: 'video' | 'image' | 'pdf';
           media_url: string;
+          media_urls?: string[] | null;
           pitch: string;
           status?: 'available' | 'bidding' | 'drafted';
+          is_platinum?: boolean;
           drafted_to_house_id?: string | null;
           winning_bid?: number;
+          anonymous_id?: string | null;
+          avatar_url?: string | null;
+          contact?: string | null;
         };
         Update: {
           id?: string;
           real_name?: string;
           track?: 'Programmer' | '2D Artist' | '3D Artist' | 'Game Designer';
-          score?: number;
           media_type?: 'video' | 'image' | 'pdf';
           media_url?: string;
+          media_urls?: string[] | null;
           pitch?: string;
           status?: 'available' | 'bidding' | 'drafted';
+          is_platinum?: boolean;
           drafted_to_house_id?: string | null;
           winning_bid?: number;
+          anonymous_id?: string | null;
+          avatar_url?: string | null;
+          contact?: string | null;
         };
         Relationships: [
           {

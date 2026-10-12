@@ -4,19 +4,19 @@ import {
   Volume2, VolumeX, ChevronLeft, ChevronRight,
   Send, Zap, UserCheck, SkipForward, PartyPopper, Play, Pause, RotateCcw,
   Shuffle, LayoutGrid, ChevronLeft as ChevronLeftIcon, ChevronRight as ChevronRightIcon,
-  Expand, X
+  Expand, X, Trophy
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { supabase } from '../lib/supabase';
 import { useAudio } from '../hooks/useAudio';
 import { broadcastEvent } from '../hooks/useEventBus';
+import { mapCandidate } from '../hooks/useSupabaseRealtime';
 import { runBalancedSnakeDraft } from '../lib/snake';
-import { PLACEHOLDER_HOUSES, PLACEHOLDER_CANDIDATES } from '../data/placeholder';
+import { withAutoplay, isEmbedUrl } from '../lib/media';
+import { isYouTubeUrl } from '../lib/youtube';
+import SnakeDraftAnimation from '../components/SnakeDraftAnimation';
+import YouTubePlayer, { type YouTubePlayerHandle } from '../components/YouTubePlayer';
 import type { Candidate, House, BidLog, Phase } from '../types/database';
-
-// ============================================================
-// Media Player Components for Admin ↔ Projector Sync
-// ============================================================
 
 interface BaseMediaInfo {
   candidateId: string;
@@ -25,6 +25,8 @@ interface BaseMediaInfo {
   mediaIndex?: number;
   action?: 'play' | 'pause' | 'seek' | 'sync';
   duration?: number;
+  fullscreen?: boolean;
+  isPlaying?: boolean;
 }
 
 interface SyncedMediaProps {
@@ -40,31 +42,41 @@ const SyncedVideoPlayer: React.FC<SyncedMediaProps & {
   onPlay?: (info: BaseMediaInfo) => void;
   onPause?: (info: BaseMediaInfo) => void;
   onSeek?: (info: BaseMediaInfo, currentTime: number) => void;
+  onFullscreen?: (info: BaseMediaInfo, fullscreen: boolean) => void;
 }> = ({ 
-  src, candidateId, mediaType, onPlay, onPause, onSeek, mediaIndex, duration: mediaDuration 
+  src, candidateId, mediaType, onPlay, onPause, onSeek, onFullscreen, mediaIndex, duration: mediaDuration 
 }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const mediaRef = useRef<BaseMediaInfo>({ candidateId, mediaType, mediaUrl: src, mediaIndex, duration: mediaDuration || 0 });
+
+  // Build the info from the *current* props so it never goes stale after a
+  // candidate change (the component instance is reused across candidates).
+  const getInfo = (): BaseMediaInfo => ({
+    candidateId,
+    mediaType,
+    mediaUrl: src,
+    mediaIndex,
+    duration: mediaDuration || 0,
+  });
 
   const handlePlay = () => {
     setIsPlaying(true);
-    onPlay?.(mediaRef.current);
+    onPlay?.(getInfo());
   };
 
   const handlePause = () => {
     setIsPlaying(false);
-    onPause?.(mediaRef.current);
+    onPause?.(getInfo());
   };
 
   const handleTimeUpdate = () => {
     if (videoRef.current) {
       const time = videoRef.current.currentTime;
       setCurrentTime(time);
-      onSeek?.(mediaRef.current, time);
+      onSeek?.(getInfo(), time);
     }
   };
 
@@ -85,12 +97,14 @@ const SyncedVideoPlayer: React.FC<SyncedMediaProps & {
   };
 
   const toggleFullscreen = () => {
-    setIsFullscreen(!isFullscreen);
+    const next = !isFullscreen;
+    setIsFullscreen(next);
+    onFullscreen?.(getInfo(), next);
     if (videoRef.current) {
-      if (!isFullscreen) {
-        videoRef.current.requestFullscreen();
+      if (next) {
+        videoRef.current.requestFullscreen?.().catch(() => {});
       } else {
-        document.exitFullscreen();
+        document.exitFullscreen?.().catch(() => {});
       }
     }
   };
@@ -105,6 +119,9 @@ const SyncedVideoPlayer: React.FC<SyncedMediaProps & {
         ref={videoRef}
         src={src}
         className="w-full h-full object-cover"
+        autoPlay
+        muted
+        playsInline
         onPlay={handlePlay}
         onPause={handlePause}
         onTimeUpdate={handleTimeUpdate}
@@ -113,7 +130,6 @@ const SyncedVideoPlayer: React.FC<SyncedMediaProps & {
         onClick={togglePlay}
         onDoubleClick={toggleFullscreen}
       />
-      {/* Controls overlay */}
       <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-4">
         <div className="flex items-center gap-3 text-white">
           <button onClick={togglePlay} className="p-2 bg-white/20 rounded-full hover:bg-white/30">
@@ -131,7 +147,7 @@ const SyncedVideoPlayer: React.FC<SyncedMediaProps & {
                 if (videoRef.current) {
                   videoRef.current.currentTime = time;
                 }
-                onSeek?.(mediaRef.current, time);
+                onSeek?.(getInfo(), time);
               }}
               className="w-full h-1 bg-white/30 rounded-full appearance-none cursor-pointer"
             />
@@ -152,34 +168,88 @@ const SyncedVideoPlayer: React.FC<SyncedMediaProps & {
   );
 };
 
-const SyncedImageViewer: React.FC<SyncedMediaProps> = ({ 
-  src, onSync, candidateId, mediaType, mediaIndex 
-}) => {
+const AdminYouTubePlayer: React.FC<{
+  src: string;
+  candidateId: string;
+  onFullscreen?: (info: BaseMediaInfo, fullscreen: boolean) => void;
+}> = ({ src, candidateId, onFullscreen }) => {
+  const playerRef = useRef<YouTubePlayerHandle>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const mediaRef = useRef<BaseMediaInfo>({ candidateId, mediaType, mediaUrl: src, mediaIndex });
 
-  const handleFullscreen = () => {
-    setIsFullscreen(!isFullscreen);
-    // Sync fullscreen state with admin
-    onSync?.(mediaRef.current);
+  const getInfo = (): BaseMediaInfo => ({ candidateId, mediaType: 'video', mediaUrl: src });
+
+  const toggleFullscreen = () => {
+    const next = !isFullscreen;
+    setIsFullscreen(next);
+    onFullscreen?.(getInfo(), next);
   };
 
   return (
-    <div className="relative w-full h-full" onClick={handleFullscreen}>
+    <div className={isFullscreen ? 'fixed inset-0 z-[60] bg-black flex flex-col' : 'relative w-full h-full'}>
+      <div className="flex-1 min-h-0">
+        <YouTubePlayer
+          ref={playerRef}
+          url={src}
+          autoplay
+          muted
+          controls={true}
+          className="w-full h-full"
+        />
+      </div>
+      <div className="bg-gradient-to-t from-black/90 to-black/40 p-3">
+        <div className="flex items-center gap-3 text-white justify-end">
+          <button
+            onClick={toggleFullscreen}
+            className="p-2 bg-white/20 rounded-full hover:bg-white/30"
+            title={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
+          >
+            {isFullscreen ? <X className="w-5 h-5" /> : <Expand className="w-5 h-5" />}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+const SyncedImageViewer: React.FC<SyncedMediaProps & {
+  onFullscreen?: (info: BaseMediaInfo, fullscreen: boolean) => void;
+}> = ({ 
+  src, candidateId, mediaType, mediaIndex, onFullscreen 
+}) => {
+  const [isFullscreen, setIsFullscreen] = useState(false);
+
+  const getInfo = (): BaseMediaInfo => ({ candidateId, mediaType, mediaUrl: src, mediaIndex });
+
+  const setFullscreen = (next: boolean) => {
+    setIsFullscreen(next);
+    onFullscreen?.(getInfo(), next);
+  };
+
+  useEffect(() => {
+    if (!isFullscreen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setFullscreen(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isFullscreen]);
+
+  return (
+    <div className="relative w-full h-full" onClick={() => setFullscreen(!isFullscreen)}>
       <img 
         src={src} 
         alt="Candidate media"
         className={`w-full h-full object-contain ${isFullscreen ? 'cursor-zoom-out' : 'cursor-zoom-in'}`}
       />
       {isFullscreen && (
-        <div className="fixed inset-0 z-50 bg-black flex items-center justify-center">
+        <div className="fixed inset-0 z-[60] bg-black flex items-center justify-center">
           <img 
             src={src} 
             alt="Candidate media fullscreen"
             className="max-w-[90vw] max-h-[90vh] object-contain"
           />
           <button 
-            onClick={() => setIsFullscreen(false)}
+            onClick={(e) => { e.stopPropagation(); setFullscreen(false); }}
             className="absolute top-4 right-4 p-2 bg-white/20 rounded-full hover:bg-white/30"
           >
             <X className="w-6 h-6 text-white" />
@@ -205,24 +275,39 @@ const ImageCarousel: React.FC<ImageCarouselProps> = ({
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
 
-  const goToNext = () => {
-    setCurrentIndex(i => (i + 1) % images.length);
+  // Reset to first image when the candidate/images change
+  useEffect(() => {
+    setCurrentIndex(0);
+    setIsFullscreen(false);
+  }, [images, candidateId]);
+
+  // Broadcast the active image + fullscreen state whenever they change so the
+  // projector always mirrors the admin (covers mount, navigation and expand).
+  useEffect(() => {
     onSync?.({
       candidateId,
-      mediaIndex: (currentIndex + 1) % images.length,
+      mediaIndex: currentIndex,
       mediaType: 'image',
-      mediaUrl: images[(currentIndex + 1) % images.length],
+      mediaUrl: images[currentIndex],
+      action: 'sync',
+      fullscreen: isFullscreen,
     });
-  };
-  const goToPrev = () => {
-    setCurrentIndex(i => (i - 1 + images.length) % images.length);
-    onSync?.({
-      candidateId,
-      mediaIndex: (currentIndex - 1 + images.length) % images.length,
-      mediaType: 'image',
-      mediaUrl: images[(currentIndex - 1 + images.length) % images.length],
-    });
-  };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentIndex, isFullscreen, candidateId]);
+
+  const goToNext = () => setCurrentIndex(i => (i + 1) % images.length);
+  const goToPrev = () => setCurrentIndex(i => (i - 1 + images.length) % images.length);
+
+  useEffect(() => {
+    if (!isFullscreen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setIsFullscreen(false);
+      if (e.key === 'ArrowRight') goToNext();
+      if (e.key === 'ArrowLeft') goToPrev();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [isFullscreen, images.length]);
 
   return (
     <div className="relative w-full h-full">
@@ -263,7 +348,7 @@ const ImageCarousel: React.FC<ImageCarouselProps> = ({
         ))}
       </div>
       {isFullscreen && (
-        <div className="fixed inset-0 z-50 bg-black flex items-center justify-center">
+        <div className="fixed inset-0 z-[60] bg-black flex items-center justify-center">
           <button 
             onClick={goToPrev}
             className="absolute left-4 p-3 bg-white/20 rounded-full hover:bg-white/30"
@@ -318,8 +403,8 @@ const formatTime = (seconds: number): string => {
 
 const AdminView: React.FC = () => {
   const audio = useAudio();
-  const [candidates, setCandidates] = useState<Candidate[]>(PLACEHOLDER_CANDIDATES);
-  const [houses, setHouses] = useState<House[]>(PLACEHOLDER_HOUSES);
+  const [candidates, setCandidates] = useState<Candidate[]>([]);
+  const [houses, setHouses] = useState<House[]>([]);
   const [bidsLog, setBidsLog] = useState<BidLog[]>([]);
   const [currentIdx, setCurrentIdx] = useState(0);
   const [selectedHouseId, setSelectedHouseId] = useState<string | null>(null);
@@ -331,6 +416,7 @@ const AdminView: React.FC = () => {
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [phase, setPhase] = useState<Phase>('phase1');
   const [msg, setMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
+  const [initialLoading, setInitialLoading] = useState(true);
 
   const currentCandidate = candidates[currentIdx];
 
@@ -343,20 +429,25 @@ const AdminView: React.FC = () => {
         supabase.from('bids_log').select('*').order('created_at', { ascending: false }).limit(50),
         supabase.from('settings').select('*').eq('key', 'phase').maybeSingle(),
       ]);
-      if (candRes.data && candRes.data.length) setCandidates(candRes.data as Candidate[]);
-      if (houseRes.data && houseRes.data.length) setHouses(houseRes.data as House[]);
       if (bidRes.data) setBidsLog(bidRes.data as BidLog[]);
       if (!setRes.error && setRes.data) setPhase(setRes.data.value as Phase);
+
+      if (candRes.data && candRes.data.length) {
+        const mappedCandidates = candRes.data.map(mapCandidate);
+        setCandidates(mappedCandidates as Candidate[]);
+      }
+      if (houseRes.data && houseRes.data.length) setHouses(houseRes.data as House[]);
+      setInitialLoading(false);
     })();
 
     const channel = supabase
       .channel('admin-realtime')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'candidates' } as any, (payload: any) => {
         if (payload.eventType === 'UPDATE') {
-          setCandidates(prev => prev.map(c => c.id === payload.new.id ? { ...c, ...payload.new } : c));
+          setCandidates(prev => prev.map(c => c.id === payload.new.id ? { ...c, ...mapCandidate(payload.new) } : c));
         }
         if (payload.eventType === 'INSERT') {
-          setCandidates(prev => (prev.some(c => c.id === payload.new.id) ? prev : [...prev, payload.new]));
+          setCandidates(prev => (prev.some(c => c.id === payload.new.id) ? prev : [...prev, mapCandidate(payload.new)]));
         }
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'houses' } as any, (payload: any) => {
@@ -456,6 +547,19 @@ const AdminView: React.FC = () => {
     setTimeout(() => setMsg(null), 3000);
   };
 
+  // Get current phase status helpers
+  const isPhase1 = phase === 'phase1';
+  
+  const isSnakeDraft = phase === 'snake_draft';
+  const isPhase2 = phase === 'phase2';
+
+  // Count non-platinum and platinum candidates by status
+  const nonPlatinumCandidates = candidates.filter(c => c.isPlatinum !== true);
+  const nonPlatinumDrafted = nonPlatinumCandidates.filter(c => c.status === 'drafted').length;
+  const nonPlatinumTotal = nonPlatinumCandidates.length;
+  const allNonPlatinumDrafted = nonPlatinumDrafted === nonPlatinumTotal && nonPlatinumTotal > 0;
+
+  // Bid function with new flow logic
   const bid = async (amount: number) => {
     if (!amount || amount <= 0) {
       showMsg('err', 'Enter a valid bid amount');
@@ -474,6 +578,39 @@ const AdminView: React.FC = () => {
     if (house.remaining_credits < amount) {
       showMsg('err', `${house.name} lacks ${amount - house.remaining_credits} credits`);
       return;
+    }
+
+    // Minimum bid enforcement - minimum 5 credits
+    const MINIMUM_BID = 5;
+    if (amount < MINIMUM_BID) {
+      showMsg('err', `Bid must be at least ${MINIMUM_BID} credits`);
+      return;
+    }
+
+    // Phase 1: Non-platinum candidates bid first
+    // Platinum candidates cannot be bid on until all non-platinum are drafted
+    if (isPhase1) {
+      const isCurrentPlatinum = currentCandidate.isPlatinum === true;
+      
+      if (isCurrentPlatinum) {
+        // In phase 1, platinum candidates cannot be bid on if non-platinum remain
+        if (allNonPlatinumDrafted) {
+          // All non-platinum drafted, allow platinum bidding
+        } else {
+          showMsg('err', 'Please bid on non-platinum candidates first before bidding on platinum members');
+          return;
+        }
+      }
+    }
+
+    // If current candidate is not platinum and there are platinum candidates still available (not drafted),
+    // and we're not in platinum phase, allow bidding on non-platinum only
+    if (!currentCandidate.isPlatinum && isPhase1 && !allNonPlatinumDrafted) {
+      const stillAvailableNonPlatinum = nonPlatinumCandidates.filter(c => c.status === 'available').length;
+      if (stillAvailableNonPlatinum > 0) {
+        showMsg('err', 'Non-platinum candidates must be bid on first. Platinum candidates will be available later.');
+        return;
+      }
     }
 
     // Check if bid is higher than current highest bid
@@ -634,12 +771,12 @@ const AdminView: React.FC = () => {
     broadcastEvent({ type: 'reset_timer' });
   };
 
-  // ---- Phase control (draft ↔ reveal) ----
+// ---- Phase control (draft ↔ reveal) ----
   const togglePhase = async (next: Phase) => {
     setPhase(next);
     broadcastEvent({ type: 'set_phase', value: next });
     await supabase.from('settings').upsert({ key: 'phase', value: next });
-    showMsg('ok', next === 'phase2' ? 'Switched to House Reveal' : 'Switched to Anchor Draft');
+    showMsg('ok', next === 'phase2' ? 'Switched to House Reveal' : 'Switched to ' + next);
   };
 
   // ---- Snake draft of leftover members ----
@@ -681,10 +818,6 @@ const AdminView: React.FC = () => {
   // Keep keyboard shortcut targets fresh on every render
   latest.current = { toggleTimer, confirmSold, nextCand, prevCand, houses, setSelectedHouseId };
 
-  if (!currentCandidate) {
-    return <div className="p-8 text-grey-500">No candidates loaded.</div>;
-  }
-
   const trackLabel: Record<string, string> = {
     'Programmer': 'Programmer',
     '2D Artist': '2D',
@@ -709,6 +842,47 @@ const AdminView: React.FC = () => {
     broadcastEvent({ type: 'media_seek', media: { ...media, action: 'seek', currentTime } });
   }, []);
 
+  const broadcastMediaFullscreen = useCallback((media: BaseMediaInfo, fullscreen: boolean) => {
+    broadcastEvent({ type: 'media_sync', media: { ...media, action: 'sync', fullscreen } });
+  }, []);
+
+  // When the on-stage candidate changes, tell the projector which media to lock
+  // onto. Embed videos are skipped so the projector keeps its own autoplay
+  // iframe (their playback cannot be controlled programmatically).
+  useEffect(() => {
+    if (!currentCandidate) return;
+    if (currentCandidate.media_type === 'pdf') return;
+    // Multi-image candidates are handled by the ImageCarousel (which syncs its
+    // own active index); only sync single-source media here.
+    if (currentCandidate.media_urls && currentCandidate.media_urls.length > 1) return;
+    const url = currentCandidate.media_urls?.[0] ?? currentCandidate.media_url;
+    // YouTube is controllable via the IFrame API; other embeds are not synced.
+    if (!url || (isEmbedUrl(url) && !isYouTubeUrl(url))) return;
+    broadcastEvent({
+      type: 'media_sync',
+      media: {
+        candidateId: currentCandidate.id,
+        mediaType: currentCandidate.media_type,
+        mediaUrl: url,
+        mediaIndex: 0,
+        action: 'sync',
+        fullscreen: false,
+        isPlaying: false, // default to paused; autoplay on admin will broadcast play
+      },
+    });
+  }, [currentCandidate?.id]);
+
+  // Guard AFTER all hooks so the hook order never changes between renders.
+  if (!currentCandidate) {
+    return (
+      <div className="min-h-screen bg-black text-white flex items-center justify-center">
+        <p className="text-grey-500 text-lg font-light">
+          {initialLoading ? 'Loading candidates…' : 'No candidates loaded.'}
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-black text-white p-8 overflow-hidden">
       <div className="max-w-7xl mx-auto h-screen flex flex-col">
@@ -718,7 +892,7 @@ const AdminView: React.FC = () => {
           <h1 className="font-display text-3xl font-black tracking-tight">Admin Panel</h1>
           <div className="flex items-center gap-4">
             <button
-              onClick={() => {
+              onClick={async () => {
                 const next = !soundEnabled;
                 setSoundEnabled(next);
                 audio.setEnabled(next);
@@ -752,13 +926,14 @@ const AdminView: React.FC = () => {
         </AnimatePresence>
 
         <div className="flex-1 grid grid-cols-12 gap-6 min-h-0">
+
           {/* LEFT — candidate list */}
           <nav className="col-span-2 overflow-y-auto pr-2">
             <div className="space-y-1">
               {candidates.map((c, i) => (
                 <button
                   key={c.id}
-                  onClick={() => {
+                  onClick={async () => {
                     setCurrentIdx(i);
                     setSelectedHouseId(null);
                     resetTimerBroadcast();
@@ -772,14 +947,14 @@ const AdminView: React.FC = () => {
                 >
                   <div className="font-display text-sm">{c.anonymous_id}</div>
                   <div className="text-xs text-grey-400 mt-0.5">
-                    {trackLabel[c.track]} · {c.score}/15
+                    {trackLabel[c.track]}
                   </div>
                 </button>
               ))}
             </div>
-</nav>
+          </nav>
 
-            {/* CENTER — candidate preview + controls */}
+          {/* CENTER — candidate preview + controls */}
           <section className="col-span-5 flex flex-col">
             {/* Media / candidate card */}
             <div className="card mb-4 aspect-video overflow-hidden relative">
@@ -798,7 +973,23 @@ const AdminView: React.FC = () => {
                   onSync={broadcastMediaSync}
                 />
               )}
-              {currentCandidate.media_type === 'video' && (!currentCandidate.media_urls || currentCandidate.media_urls.length <= 1) && (
+              {currentCandidate.media_type === 'video' && (!currentCandidate.media_urls || currentCandidate.media_urls.length <= 1) && isYouTubeUrl(currentCandidate.media_url) && (
+                <AdminYouTubePlayer
+                  src={currentCandidate.media_url}
+                  candidateId={currentCandidate.id}
+                  onFullscreen={broadcastMediaFullscreen}
+                />
+              )}
+              {currentCandidate.media_type === 'video' && (!currentCandidate.media_urls || currentCandidate.media_urls.length <= 1) && isEmbedUrl(currentCandidate.media_url) && !isYouTubeUrl(currentCandidate.media_url) && (
+                <iframe
+                  key={currentCandidate.id}
+                  src={withAutoplay(currentCandidate.media_url)}
+                  className="w-full h-full"
+                  allowFullScreen
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                />
+              )}
+              {currentCandidate.media_type === 'video' && (!currentCandidate.media_urls || currentCandidate.media_urls.length <= 1) && !isEmbedUrl(currentCandidate.media_url) && (
                 <SyncedVideoPlayer 
                   src={currentCandidate.media_url}
                   candidateId={currentCandidate.id}
@@ -806,6 +997,7 @@ const AdminView: React.FC = () => {
                   onPlay={broadcastMediaPlay}
                   onPause={broadcastMediaPause}
                   onSeek={broadcastMediaSeek}
+                  onFullscreen={broadcastMediaFullscreen}
                 />
               )}
               {currentCandidate.media_type === 'image' && (!currentCandidate.media_urls || currentCandidate.media_urls.length <= 1) && (
@@ -813,7 +1005,7 @@ const AdminView: React.FC = () => {
                   src={currentCandidate.media_url}
                   candidateId={currentCandidate.id}
                   mediaType="image"
-                  onSync={broadcastMediaSync}
+                  onFullscreen={broadcastMediaFullscreen}
                 />
               )}
               {currentCandidate.media_type === 'pdf' && (
@@ -899,8 +1091,9 @@ const AdminView: React.FC = () => {
             </div>
           </section>
 
-          {/* RIGHT — bidding controls */}
+          {/* RIGHT — bidding / phase controls */}
           <aside className="col-span-3 space-y-4">
+            
             {/* Timer */}
             <div className="card p-4">
               <div className="font-display text-5xl font-black text-center mb-2">
@@ -935,7 +1128,7 @@ const AdminView: React.FC = () => {
               {houses.map((house) => (
                 <button
                   key={house.id}
-                  onClick={() => {
+                  onClick={async () => {
                     setSelectedHouseId(house.id);
                     broadcastHouseSelect(house.id);
                   }}
@@ -955,7 +1148,7 @@ const AdminView: React.FC = () => {
               {[5, 10, 25].map(a => (
                 <button
                   key={a}
-                  onClick={() => {
+                  onClick={async () => {
                     bid(a);
                     broadcastBid(a);
                   }}
@@ -1017,50 +1210,86 @@ const AdminView: React.FC = () => {
               </div>
             </div>
 
-            {/* Draft flow: phase + snake */}
+            {/* Draft flow: phase control */}
             <div className="card p-4">
               <div className="text-xs text-grey-500 mb-3 uppercase tracking-wider flex items-center gap-2">
                 <LayoutGrid className="w-3.5 h-3.5" />
                 Draft Flow
               </div>
 
-              {/* Phase toggle */}
-              <div className="grid grid-cols-2 gap-2 mb-3">
+              {/* Phase toggle section */}
+              <div className="grid grid-cols-2 gap-2 mb-4">
+                {/* Phase 1: Draft */}
                 <button
                   onClick={() => togglePhase('phase1')}
                   className={`py-2 text-xs font-bold uppercase transition-colors ${
-                    phase === 'phase1' ? 'bg-white text-black' : 'border border-white/10 hover:bg-white/10'
+                    isPhase1 ? 'bg-white text-black' : 'border border-white/10 hover:bg-white/10'
                   }`}
+                  title="Phase 1: Non-platinum candidates bid first"
                 >
-                  Phase 1 · Draft
+                  <div className="flex items-center gap-2">
+                    <Shuffle className="w-3.5 h-3.5" />
+                    <span>Phase 1</span>
+                  </div>
+                  <span className="text-[10px] opacity-70">Draft</span>
                 </button>
+                
+                {/* Snake Draft */}
+                <button
+                  onClick={async () => {
+                    if (phase === 'phase1') {
+                      setPhase('snake_draft');
+                      broadcastEvent({ type: 'set_phase', value: 'snake_draft' });
+                      await supabase.from('settings').upsert({ key: 'phase', value: 'snake_draft' });
+                      runSnake();
+                    }
+                  }}
+                  className={`py-2 text-xs font-bold uppercase transition-colors ${
+                    isSnakeDraft ? 'bg-white text-black' : 'border border-white/10 hover:bg-white/10'
+                  }`}
+                  title="Snake Draft remaining candidates"
+                >
+                  <div className="flex items-center gap-2">
+                    <Shuffle className="w-3.5 h-3.5" />
+                    <span>Snake</span>
+                  </div>
+                  <span className="text-[10px] opacity-70">{leftovers.length} remaining</span>
+                </button>
+                
+                {/* Phase 2: Reveal */}
                 <button
                   onClick={() => togglePhase('phase2')}
                   className={`py-2 text-xs font-bold uppercase transition-colors ${
-                    phase === 'phase2' ? 'bg-white text-black' : 'border border-white/10 hover:bg-white/10'
+                    isPhase2 ? 'bg-white text-black' : 'border border-white/10 hover:bg-white/10'
                   }`}
+                  title="Phase 2: House Reveal"
                 >
-                  Phase 2 · Reveal
+                  <div className="flex items-center gap-2">
+                    <Trophy className="w-3.5 h-3.5 text-gold-400" />
+                    <span>Reveal</span>
+                  </div>
+                  <span className="text-[10px] opacity-70">House reveal</span>
                 </button>
               </div>
 
-              {/* Snake draft */}
-              <button
-                onClick={runSnake}
-                disabled={loading || leftovers.length === 0}
-                className={`w-full py-2.5 text-xs font-bold uppercase border transition-colors disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-white ${
-                  leftovers.length > 0
-                    ? 'border-white/40 ring-1 ring-white/20 animate-pulse hover:bg-white hover:text-black'
-                    : 'border-white/20 hover:bg-white hover:text-black'
-                }`}
-              >
-                <Shuffle className="w-4 h-4 inline mr-1" />
-                Snake Draft Leftovers ({leftovers.length})
-              </button>
-              <p className="text-[10px] text-grey-600 mt-2 leading-relaxed">
-                Shuffles undrafted + passed members into teams (fewest credits pick first, free of charge).
-              </p>
+              {/* Show appropriate phase content */}
+              {isSnakeDraft && (
+                <SnakeDraftAnimation
+                  assignments={[] as any[]} // Will be populated by runSnake
+                  candidates={candidates}
+                  houses={houses}
+                  onComplete={runSnake}
+                  duration={6000}
+                />
+              )}
             </div>
+
+            {/* Leftovers info */}
+            {isPhase1 && !allNonPlatinumDrafted && (
+              <p className="text-[10px] text-grey-600 mt-2 leading-relaxed">
+                {nonPlatinumDrafted} of {nonPlatinumTotal} non-platinum candidates drafted. Bid on remaining non-platinum members first.
+              </p>
+            )}
           </aside>
         </div>
       </div>

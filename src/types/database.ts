@@ -1,18 +1,18 @@
 export type Track = 'Programmer' | '2D Artist' | '3D Artist' | 'Game Designer';
 export type MediaType = 'video' | 'image' | 'pdf';
 export type CandidateStatus = 'available' | 'bidding' | 'drafted';
-export type Phase = 'phase1' | 'phase2';
+export type Phase = 'phase1' | 'phase2' | 'platinum_transition' | 'snake_draft';
 
 export interface Candidate {
   id: string;
   real_name: string;
   track: Track;
-  score: number;
   media_type: MediaType;
   media_url: string;
   media_urls?: string[];
   pitch: string;
   status: CandidateStatus;
+  isPlatinum: boolean;
   drafted_to_house_id: string | null;
   winning_bid: number;
   anonymous_id: string;
