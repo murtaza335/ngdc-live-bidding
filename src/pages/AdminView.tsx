@@ -411,7 +411,7 @@ const AdminView: React.FC = () => {
   const [customBid, setCustomBid] = useState<string>('');
   const [showRealName, setShowRealName] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [timerSec, setTimerSec] = useState(60);
+  const [timerSec, setTimerSec] = useState(15);
   const [timerActive, setTimerActive] = useState(false);
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [phase, setPhase] = useState<Phase>('phase1');
@@ -471,7 +471,11 @@ const AdminView: React.FC = () => {
     if (timerActive && timerSec > 0) {
       id = setInterval(() => {
         setTimerSec(s => {
-          if (s <= 1) { clearInterval(id!); setTimerActive(false); return 0; }
+          if (s <= 1) {
+            clearInterval(id!);
+            setTimerActive(false);
+            return 0;
+          }
           return s - 1;
         });
       }, 1000);
@@ -540,7 +544,7 @@ const AdminView: React.FC = () => {
       broadcastEvent({ type: 'prev_candidate', value: prevId });
     }
   };
-  const resetTimer = () => { setTimerActive(false); setTimerSec(60); };
+  const resetTimer = () => { setTimerActive(false); setTimerSec(15); };
 
   const showMsg = (type: 'ok' | 'err', text: string) => {
     setMsg({ type, text });
@@ -618,6 +622,10 @@ const AdminView: React.FC = () => {
       { id: Date.now(), candidate_id: currentCandidate.id, house_id: selectedHouseId!, bid_amount: amount, created_at: new Date().toISOString() },
       ...prev,
     ]);
+    // Reset and start 15-second timer
+    setTimerSec(15);
+    setTimerActive(true);
+    broadcastEvent({ type: 'start_timer', value: 15 });
     showMsg('ok', `${house.name} bid ${amount}`);
     setCustomBid('');
     setLoading(false);
@@ -761,8 +769,8 @@ const AdminView: React.FC = () => {
 
   // Timer controls that broadcast state to projector
   const startTimer = () => {
-    const startFrom = timerSec > 0 ? timerSec : 60;
-    if (timerSec === 0) setTimerSec(60);
+    const startFrom = timerSec > 0 ? timerSec : 15;
+    if (timerSec === 0) setTimerSec(15);
     setTimerActive(true);
     broadcastEvent({ type: 'start_timer', value: startFrom });
   };
@@ -1149,7 +1157,7 @@ const AdminView: React.FC = () => {
 
             {/* Quick bid buttons */}
             <div className="grid grid-cols-5 gap-2">
-              {[5, 10, 25].map(a => (
+              {[5, 10, 20, 25, 30, 40, 50, 75, 100].map(a => (
                 <button
                   key={a}
                   onClick={async () => {
@@ -1166,7 +1174,7 @@ const AdminView: React.FC = () => {
                 <input
                   type="number"
                   min="1"
-                  max="20"
+                  max="100"
                   value={customBid}
                   onChange={e => setCustomBid(e.target.value)}
                   onKeyDown={e => { if (e.key === 'Enter') { const amount = parseInt(customBid) || 0; bid(amount); broadcastBid(amount); } }}

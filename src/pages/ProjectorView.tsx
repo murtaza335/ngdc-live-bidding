@@ -23,7 +23,7 @@ const ProjectorView: React.FC = () => {
   const [showRealName, setShowRealName] = useState(false);
   const [brokenMedia, setBrokenMedia] = useState<Record<string, boolean>>({});
   const [pinnedId, setPinnedId] = useState<string | null>(null);
-  const [timerSec, setTimerSec] = useState(60);
+  const [timerSec, setTimerSec] = useState(15);
   const [timerRunning, setTimerRunning] = useState(false);
   const [soldInfo, setSoldInfo] = useState<{ candidate: Candidate; house: House | null; bid: number } | null>(null);
   const [phaseOverride, setPhaseOverride] = useState<Phase | null>(null);
@@ -142,6 +142,7 @@ const ProjectorView: React.FC = () => {
     }
     if (payload.type === 'start_timer') {
       if (typeof payload.value === 'number' && payload.value > 0) setTimerSec(payload.value);
+      else setTimerSec(15);
       setTimerRunning(true);
     }
     if (payload.type === 'pause_timer') {
@@ -149,7 +150,7 @@ const ProjectorView: React.FC = () => {
     }
     if (payload.type === 'reset_timer') {
       setTimerRunning(false);
-      setTimerSec(60);
+      setTimerSec(15);
     }
     if (payload.type === 'set_phase' && typeof payload.value === 'string') {
       setPhaseOverride(payload.value as Phase);

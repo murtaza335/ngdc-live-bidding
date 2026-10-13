@@ -1,7 +1,6 @@
 import React from 'react';
 import { motion } from 'framer-motion';
 import { Trophy } from 'lucide-react';
-import { getAvatarForId } from '../data/avatars';
 import type { Candidate, House } from '../types/database';
 
 interface HouseRevealProps {
@@ -44,7 +43,6 @@ const HouseReveal: React.FC<HouseRevealProps> = ({ houses, candidates }) => {
         {houses.map((house, houseIdx) => {
           const members = candidates.filter(c => c.drafted_to_house_id === house.id);
           const spent = house.initial_credits - house.remaining_credits;
-          const usedAvatars = new Set<number>();
 
           return (
             <motion.div
@@ -87,7 +85,6 @@ const HouseReveal: React.FC<HouseRevealProps> = ({ houses, candidates }) => {
                 )}
 
                 {members.map((member, i) => {
-                  const avatar = getAvatarForId(member.id, usedAvatars);
                   return (
                     <motion.div
                       key={member.id}
@@ -103,7 +100,7 @@ const HouseReveal: React.FC<HouseRevealProps> = ({ houses, candidates }) => {
 
                       {/* Avatar */}
                       <img
-                        src={avatar}
+                        src={member.avatar_url || `https://i.pravatar.cc/150?u=${encodeURIComponent(member.id)}`}
                         alt={member.real_name}
                         className="w-14 h-14 rounded-full object-cover border border-white/15 grayscale group-hover:grayscale-0 transition-all duration-500"
                         loading="lazy"
