@@ -448,7 +448,6 @@ const ProjectorView: React.FC = () => {
           src={src}
           className={`w-full h-full ${objectFit}`}
           autoPlay
-          muted
           playsInline
         />
         {!isPlaying && (
@@ -458,26 +457,44 @@ const ProjectorView: React.FC = () => {
             </div>
           </div>
         )}
+        <button
+          onClick={() => videoRef.current && (videoRef.current.muted = !videoRef.current.muted)}
+          className="absolute bottom-4 right-4 p-2 bg-white/20 rounded-full hover:bg-white/30 z-10"
+          aria-label="Toggle mute"
+        >
+          {videoRef.current?.muted ? <VolumeX className="w-5 h-5" /> : <Volume2 className="w-5 h-5" />}
+        </button>
       </div>
     );
   };
 
-  // Synced YouTube player for projector (read-only, controlled by admin)
   // Synced YouTube player for projector (autoplay + fullscreen sync)
   const SyncedProjectorYouTube: React.FC<{
     src: string;
     isFullscreen?: boolean;
     className?: string;
   }> = ({ src, className }) => {
+    const [muted, setMuted] = useState(true);
     return (
       <div className="relative w-full h-full bg-black">
         <YouTubePlayer
           url={src}
           autoplay
-          muted
+          muted={muted}
           controls={false}
           className={className ?? 'w-full h-full'}
+          onReady={() => {
+            // Try to unmute after a short delay (requires user interaction)
+            setTimeout(() => setMuted(false), 1000);
+          }}
         />
+        <button
+          onClick={() => setMuted(!muted)}
+          className="absolute bottom-4 right-4 p-2 bg-white/20 rounded-full hover:bg-white/30 z-10"
+          aria-label={muted ? 'Unmute' : 'Mute'}
+        >
+          {muted ? <VolumeX className="w-5 h-5" /> : <Volume2 className="w-5 h-5" />}
+        </button>
       </div>
     );
   };
