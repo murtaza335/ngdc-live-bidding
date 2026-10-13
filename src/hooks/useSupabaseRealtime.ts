@@ -36,7 +36,7 @@ export function useSupabaseRealtime() {
     }
     try {
       const [candidatesRes, housesRes, bidsRes, settingsRes] = await Promise.all([
-        supabase.from('candidates').select('*').order('id'),
+        supabase.from('candidates').select('*').order('id', { ascending: false }),
         supabase.from('houses').select('*').order('id'),
         supabase.from('bids_log').select('*').order('created_at', { ascending: false }).limit(50),
         supabase.from('settings').select('*').eq('key', 'phase').maybeSingle(),
@@ -70,10 +70,10 @@ export function useSupabaseRealtime() {
         const p = payload as RealtimePayload<any>;
         setCandidates(prev => {
           if (p.eventType === 'INSERT') {
-            return [...prev, mapCandidate(p.new)].sort((a, b) => a.id.localeCompare(b.id));
+            return [...prev, mapCandidate(p.new)].sort((a, b) => b.id.localeCompare(a.id));
           }
           if (p.eventType === 'UPDATE') {
-            return prev.map(c => (c.id === p.new.id ? mapCandidate(p.new) : c)).sort((a, b) => a.id.localeCompare(b.id));
+            return prev.map(c => (c.id === p.new.id ? mapCandidate(p.new) : c)).sort((a, b) => b.id.localeCompare(a.id));
           }
           if (p.eventType === 'DELETE') {
             return prev.filter(c => c.id !== (p.old as any)?.id);

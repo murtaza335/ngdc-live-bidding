@@ -424,7 +424,7 @@ const AdminView: React.FC = () => {
   useEffect(() => {
     (async () => {
       const [candRes, houseRes, bidRes, setRes] = await Promise.all([
-        supabase.from('candidates').select('*').order('id'),
+        supabase.from('candidates').select('*').order('id', { ascending: false }),
         supabase.from('houses').select('*').order('id'),
         supabase.from('bids_log').select('*').order('created_at', { ascending: false }).limit(50),
         supabase.from('settings').select('*').eq('key', 'phase').maybeSingle(),
@@ -447,7 +447,7 @@ const AdminView: React.FC = () => {
           setCandidates(prev => prev.map(c => c.id === payload.new.id ? { ...c, ...mapCandidate(payload.new) } : c));
         }
         if (payload.eventType === 'INSERT') {
-          setCandidates(prev => (prev.some(c => c.id === payload.new.id) ? prev : [...prev, mapCandidate(payload.new)]));
+          setCandidates(prev => (prev.some(c => c.id === payload.new.id) ? prev : [mapCandidate(payload.new), ...prev]));
         }
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'houses' } as any, (payload: any) => {
