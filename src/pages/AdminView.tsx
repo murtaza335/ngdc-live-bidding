@@ -554,10 +554,6 @@ const AdminView: React.FC = () => {
   const isPhase2 = phase === 'phase2';
 
   // Count non-platinum and platinum candidates by status
-  const nonPlatinumCandidates = candidates.filter(c => c.isPlatinum !== true);
-  const nonPlatinumDrafted = nonPlatinumCandidates.filter(c => c.status === 'drafted').length;
-  const nonPlatinumTotal = nonPlatinumCandidates.length;
-  const allNonPlatinumDrafted = nonPlatinumDrafted === nonPlatinumTotal && nonPlatinumTotal > 0;
 
   // Bid function with new flow logic
   const bid = async (amount: number) => {
@@ -587,31 +583,6 @@ const AdminView: React.FC = () => {
       return;
     }
 
-    // Phase 1: Non-platinum candidates bid first
-    // Platinum candidates cannot be bid on until all non-platinum are drafted
-    if (isPhase1) {
-      const isCurrentPlatinum = currentCandidate.isPlatinum === true;
-      
-      if (isCurrentPlatinum) {
-        // In phase 1, platinum candidates cannot be bid on if non-platinum remain
-        if (allNonPlatinumDrafted) {
-          // All non-platinum drafted, allow platinum bidding
-        } else {
-          showMsg('err', 'Please bid on non-platinum candidates first before bidding on platinum members');
-          return;
-        }
-      }
-    }
-
-    // If current candidate is not platinum and there are platinum candidates still available (not drafted),
-    // and we're not in platinum phase, allow bidding on non-platinum only
-    if (!currentCandidate.isPlatinum && isPhase1 && !allNonPlatinumDrafted) {
-      const stillAvailableNonPlatinum = nonPlatinumCandidates.filter(c => c.status === 'available').length;
-      if (stillAvailableNonPlatinum > 0) {
-        showMsg('err', 'Non-platinum candidates must be bid on first. Platinum candidates will be available later.');
-        return;
-      }
-    }
 
     // Check if bid is higher than current highest bid
     const candidateBids = bidsLog.filter(b => b.candidate_id === currentCandidate.id);
@@ -700,7 +671,15 @@ const AdminView: React.FC = () => {
 
     if (soundEnabled) {
       audio.playSoldSound();
-      confetti({ particleCount: 80, spread: 120, scalar: 1.2 });
+      confetti({
+        particleCount: 120,
+        spread: 140,
+        startVelocity: 50,
+        scalar: 1.4,
+        colors: ['#FF006E', '#FB5607', '#FFBE0B', '#8338EC', '#3A86FF', '#06D6A0'],
+        zIndex: 9999,
+        gravity: 0.8,
+      });
     }
 
     broadcastEvent({ type: 'confirm_sold', value: currentCandidate.id });
@@ -725,17 +704,42 @@ const AdminView: React.FC = () => {
     broadcastEvent({ type: 'pass_candidate' });
   };
 
+
   // Broadcast confetti to projector + fire locally
   const triggerConfetti = () => {
     broadcastEvent({ type: 'trigger_confetti' });
+    // Main burst
     confetti({
-      particleCount: 100,
-      spread: 120,
-      startVelocity: 45,
-      scalar: 1.3,
-      colors: ['#ffffff', '#d4d4d4', '#a3a3a3', '#737373'],
+      particleCount: 150,
+      spread: 160,
+      startVelocity: 55,
+      scalar: 1.5,
+      colors: ['#FF006E', '#FB5607', '#FFBE0B', '#8338EC', '#3A86FF', '#06D6A0', '#FFBE0B', '#FF006E'],
       zIndex: 9999,
+      gravity: 0.8,
+      drift: 0,
     });
+    // Secondary burst from sides
+    setTimeout(() => {
+      confetti({
+        particleCount: 80,
+        spread: 100,
+        startVelocity: 40,
+        scalar: 1.2,
+        colors: ['#FF006E', '#FB5607', '#FFBE0B'],
+        zIndex: 9999,
+        origin: { x: 0.1, y: 0.5 },
+      });
+      confetti({
+        particleCount: 80,
+        spread: 100,
+        startVelocity: 40,
+        scalar: 1.2,
+        colors: ['#8338EC', '#3A86FF', '#06D6A0'],
+        zIndex: 9999,
+        origin: { x: 0.9, y: 0.5 },
+      });
+    }, 100);
   };
 
   // Broadcast reveal identity to projector
@@ -1285,9 +1289,9 @@ const AdminView: React.FC = () => {
             </div>
 
             {/* Leftovers info */}
-            {isPhase1 && !allNonPlatinumDrafted && (
+            {isPhase1 && (
               <p className="text-[10px] text-grey-600 mt-2 leading-relaxed">
-                {nonPlatinumDrafted} of {nonPlatinumTotal} non-platinum candidates drafted. Bid on remaining non-platinum members first.
+                Bidding open for all candidates.
               </p>
             )}
           </aside>

@@ -50,15 +50,74 @@ const ProjectorView: React.FC = () => {
     setPhaseOverride(null);
   }, [phase]);
 
-  const fireConfetti = () => {
-    confetti({
-      particleCount: 100,
-      spread: 120,
-      startVelocity: 45,
-      scalar: 1.3,
-      colors: ['#ffffff', '#d4d4d4', '#a3a3a3', '#737373'],
-      zIndex: 9999,
-    });
+  const fireConfetti = (type: 'default' | 'snake' = 'default') => {
+    if (type === 'snake') {
+      // Snake draft - massive disco burst
+      confetti({
+        particleCount: 200,
+        spread: 180,
+        startVelocity: 60,
+        scalar: 1.8,
+        colors: ['#FF006E', '#FB5607', '#FFBE0B', '#8338EC', '#3A86FF', '#06D6A0', '#FF006E', '#FB5607'],
+        zIndex: 9999,
+        gravity: 0.7,
+        drift: 0,
+      });
+      // Side bursts
+      setTimeout(() => {
+        confetti({
+          particleCount: 100,
+          spread: 120,
+          startVelocity: 45,
+          scalar: 1.3,
+          colors: ['#FF006E', '#FFBE0B', '#FB5607'],
+          zIndex: 9999,
+          origin: { x: 0.15, y: 0.5 },
+        });
+        confetti({
+          particleCount: 100,
+          spread: 120,
+          startVelocity: 45,
+          scalar: 1.3,
+          colors: ['#8338EC', '#3A86FF', '#06D6A0'],
+          zIndex: 9999,
+          origin: { x: 0.85, y: 0.5 },
+        });
+      }, 150);
+    } else {
+      // Default - colorful disco burst
+      confetti({
+        particleCount: 150,
+        spread: 160,
+        startVelocity: 55,
+        scalar: 1.5,
+        colors: ['#FF006E', '#FB5607', '#FFBE0B', '#8338EC', '#3A86FF', '#06D6A0', '#FFBE0B', '#FF006E'],
+        zIndex: 9999,
+        gravity: 0.8,
+        drift: 0,
+      });
+      // Side bursts
+      setTimeout(() => {
+        confetti({
+          particleCount: 80,
+          spread: 100,
+          startVelocity: 40,
+          scalar: 1.2,
+          colors: ['#FF006E', '#FB5607', '#FFBE0B'],
+          zIndex: 9999,
+          origin: { x: 0.1, y: 0.5 },
+        });
+        confetti({
+          particleCount: 80,
+          spread: 100,
+          startVelocity: 40,
+          scalar: 1.2,
+          colors: ['#8338EC', '#3A86FF', '#06D6A0'],
+          zIndex: 9999,
+          origin: { x: 0.9, y: 0.5 },
+        });
+      }, 100);
+    }
   };
 
   // ---- Listen to admin broadcasts (confetti, reveal, phase, candidate, timer, media) ----
@@ -71,7 +130,7 @@ const ProjectorView: React.FC = () => {
       fireConfetti();
     }
     if (payload.type === 'snake_done') {
-      fireConfetti();
+      fireConfetti('snake');
       if (soundEnabled) audio.playSoldSound();
     }
     if (
@@ -326,7 +385,7 @@ const ProjectorView: React.FC = () => {
     if (candidate.media_type === 'video') {
       return (
         <iframe
-          key={candidate.id}
+          key={candidate.media_url}
           src={withAutoplay(candidate.media_url)}
           className="w-full h-full"
           allowFullScreen
@@ -382,7 +441,7 @@ const ProjectorView: React.FC = () => {
     }, [isPlaying]);
 
     return (
-      <div className="relative w-full h-full">
+      <div className="relative w-full h-full bg-black">
         <video
           ref={videoRef}
           src={src}
@@ -410,7 +469,7 @@ const ProjectorView: React.FC = () => {
     className?: string;
   }> = ({ src, className }) => {
     return (
-      <div className="relative w-full h-full">
+      <div className="relative w-full h-full bg-black">
         <YouTubePlayer
           url={src}
           autoplay
