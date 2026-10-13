@@ -291,7 +291,7 @@ const SoldOverlay: React.FC<SoldOverlayProps> = ({ candidate, house, bid, onDone
               }}
             >
               <span className="font-display text-sm md:text-lg font-bold uppercase tracking-wider">
-                {house.name.toUpperCase()} • TEAM LEAD ASSIGNED
+                {house.name.toUpperCase()}
               </span>
               <span
                 className="absolute -inset-1 rounded-lg opacity-50 blur-xl animate-pulse"
