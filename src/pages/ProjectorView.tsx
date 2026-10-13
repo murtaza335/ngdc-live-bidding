@@ -14,6 +14,123 @@ import YouTubePlayer from '../components/YouTubePlayer';
 import { withAutoplay } from '../lib/media';
 import { isYouTubeUrl } from '../lib/youtube';
 
+// Synced video player for projector (read-only, controlled by admin)
+const SyncedProjectorVideo: React.FC<{
+  src: string;
+  currentTime: number;
+  isPlaying: boolean;
+  objectFit?: string;
+}> = ({ src, currentTime, isPlaying, objectFit = 'object-cover' }) => {
+  const videoRef = useRef<HTMLVideoElement>(null);
+
+  useEffect(() => {
+    const el = videoRef.current;
+    if (!el) return;
+    if (Math.abs(el.currentTime - currentTime) > 0.75) {
+      el.currentTime = currentTime;
+    }
+  }, [currentTime]);
+
+  useEffect(() => {
+    const el = videoRef.current;
+    if (!el) return;
+    if (isPlaying) {
+      el.play().catch(() => {});
+    } else {
+      el.pause();
+    }
+  }, [isPlaying]);
+
+  return (
+    <div className="relative w-full h-full bg-black">
+      <video
+        ref={videoRef}
+        src={src}
+        className={`w-full h-full ${objectFit}`}
+        autoPlay
+        playsInline
+      />
+      {!isPlaying && (
+        <div className="absolute inset-0 flex items-center justify-center bg-black/50 z-10 pointer-events-none">
+          <div className="bg-white/10 backdrop-blur-sm rounded-full p-6">
+            <Pause className="w-16 h-16 text-white/90" />
+          </div>
+        </div>
+      )}
+      <button
+        onClick={() => videoRef.current && (videoRef.current.muted = !videoRef.current.muted)}
+        className="absolute bottom-4 right-4 p-2 bg-white/20 rounded-full hover:bg-white/30 z-10"
+        aria-label="Toggle mute"
+      >
+        {videoRef.current?.muted ? <VolumeX className="w-5 h-5" /> : <Volume2 className="w-5 h-5" />}
+      </button>
+    </div>
+  );
+};
+
+// Synced YouTube player for projector (autoplay + fullscreen sync)
+const SyncedProjectorYouTube: React.FC<{
+  src: string;
+  isFullscreen?: boolean;
+  className?: string;
+  isPlaying?: boolean;
+  currentTime?: number;
+}> = ({ src, className, isPlaying, currentTime }) => {
+  const playerRef = useRef<any>(null);
+  const [muted, setMuted] = useState(true);
+
+  useEffect(() => {
+    if (playerRef.current && typeof isPlaying === 'boolean') {
+      if (isPlaying) {
+        playerRef.current.play?.();
+      } else {
+        playerRef.current.pause?.();
+      }
+    }
+  }, [isPlaying]);
+
+  useEffect(() => {
+    if (playerRef.current && typeof currentTime === 'number') {
+      const player = playerRef.current;
+      if (typeof player.getCurrentTime === 'function' && Math.abs((player.getCurrentTime() || 0) - currentTime) > 1) {
+        player.seekTo?.(currentTime, true);
+      }
+    }
+  }, [currentTime]);
+
+  return (
+    <div className="relative w-full h-full bg-black">
+      <YouTubePlayer
+        ref={playerRef}
+        url={src}
+        autoplay
+        muted={muted}
+        controls={false}
+        className={className ?? 'w-full h-full'}
+        onReady={() => {
+          setTimeout(() => setMuted(false), 1000);
+        }}
+      />
+      <button
+        onClick={() => setMuted(!muted)}
+        className="absolute bottom-4 right-4 p-2 bg-white/20 rounded-full hover:bg-white/30 z-10"
+        aria-label={muted ? 'Unmute' : 'Mute'}
+      >
+        {muted ? <VolumeX className="w-5 h-5" /> : <Volume2 className="w-5 h-5" />}
+      </button>
+    </div>
+  );
+};
+
+// Synced image viewer for projector (read-only, controlled by admin)
+const SyncedProjectorImage: React.FC<{ src: string }> = ({ src }) => (
+  <img
+    src={src}
+    alt="Synced media"
+    className="w-full h-full object-contain"
+  />
+);
+
 const ProjectorView: React.FC = () => {
   const { candidates, houses, bidsLog, phase, loading } = useSupabaseRealtime();
   const audio = useAudio();
@@ -364,6 +481,8 @@ const ProjectorView: React.FC = () => {
             <SyncedProjectorYouTube
               src={sm.mediaUrl}
               isFullscreen={sm.fullscreen || false}
+              isPlaying={sm.isPlaying}
+              currentTime={sm.currentTime}
             />
           );
         }
@@ -411,102 +530,6 @@ const ProjectorView: React.FC = () => {
       </div>
     );
   };
-
-  // Synced video player for projector (read-only, controlled by admin)
-  const SyncedProjectorVideo: React.FC<{
-    src: string;
-    currentTime: number;
-    isPlaying: boolean;
-    objectFit?: string;
-  }> = ({ src, currentTime, isPlaying, objectFit = 'object-cover' }) => {
-    const videoRef = useRef<HTMLVideoElement>(null);
-
-    // Only seek when we've drifted noticeably — avoids stutter from the
-    // frequent timeupdate broadcasts coming from the admin panel.
-    useEffect(() => {
-      const el = videoRef.current;
-      if (!el) return;
-      if (Math.abs(el.currentTime - currentTime) > 0.75) {
-        el.currentTime = currentTime;
-      }
-    }, [currentTime]);
-
-    useEffect(() => {
-      const el = videoRef.current;
-      if (!el) return;
-      if (isPlaying) {
-        el.play().catch(() => {});
-      } else {
-        el.pause();
-      }
-    }, [isPlaying]);
-
-    return (
-      <div className="relative w-full h-full bg-black">
-        <video
-          ref={videoRef}
-          src={src}
-          className={`w-full h-full ${objectFit}`}
-          autoPlay
-          playsInline
-        />
-        {!isPlaying && (
-          <div className="absolute inset-0 flex items-center justify-center bg-black/50 z-10 pointer-events-none">
-            <div className="bg-white/10 backdrop-blur-sm rounded-full p-6">
-              <Pause className="w-16 h-16 text-white/90" />
-            </div>
-          </div>
-        )}
-        <button
-          onClick={() => videoRef.current && (videoRef.current.muted = !videoRef.current.muted)}
-          className="absolute bottom-4 right-4 p-2 bg-white/20 rounded-full hover:bg-white/30 z-10"
-          aria-label="Toggle mute"
-        >
-          {videoRef.current?.muted ? <VolumeX className="w-5 h-5" /> : <Volume2 className="w-5 h-5" />}
-        </button>
-      </div>
-    );
-  };
-
-  // Synced YouTube player for projector (autoplay + fullscreen sync)
-  const SyncedProjectorYouTube: React.FC<{
-    src: string;
-    isFullscreen?: boolean;
-    className?: string;
-  }> = ({ src, className }) => {
-    const [muted, setMuted] = useState(true);
-    return (
-      <div className="relative w-full h-full bg-black">
-        <YouTubePlayer
-          url={src}
-          autoplay
-          muted={muted}
-          controls={false}
-          className={className ?? 'w-full h-full'}
-          onReady={() => {
-            // Try to unmute after a short delay (requires user interaction)
-            setTimeout(() => setMuted(false), 1000);
-          }}
-        />
-        <button
-          onClick={() => setMuted(!muted)}
-          className="absolute bottom-4 right-4 p-2 bg-white/20 rounded-full hover:bg-white/30 z-10"
-          aria-label={muted ? 'Unmute' : 'Mute'}
-        >
-          {muted ? <VolumeX className="w-5 h-5" /> : <Volume2 className="w-5 h-5" />}
-        </button>
-      </div>
-    );
-  };
-
-  // Synced image viewer for projector (read-only, controlled by admin)
-  const SyncedProjectorImage: React.FC<{ src: string }> = ({ src }) => (
-    <img
-      src={src}
-      alt="Synced media"
-      className="w-full h-full object-contain"
-    />
-  );
 
   // ---- PHASE 2: House Reveal / final lineups ----
   if (effectivePhase === 'phase2') {
@@ -908,6 +931,8 @@ const ProjectorView: React.FC = () => {
                 <SyncedProjectorYouTube
                   src={syncedMedia.mediaUrl}
                   isFullscreen={true}
+                  isPlaying={syncedMedia.isPlaying}
+                  currentTime={syncedMedia.currentTime}
                 />
               ) : (
                 <SyncedProjectorVideo
